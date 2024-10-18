@@ -1,2 +1,0 @@
-2024/10/18 02:38:56 [ ERROR ]	Could not connect to account websocket:websocket: bad handshake
-  -> &{Status:404 Not Found StatusCode:404 Proto:HTTP/1.1 ProtoMajor:1 ProtoMinor:1 Header:map[Connection:[keep-alive] Content-Length:[21] Content-Type:[text/plain; charset=utf-8] Date:[Fri, 18 Oct 2024 00:38:56 GMT] Strict-Transport-Security:[max-age=31536000; includeSubDomains]] Body:{Reader:0xc0002021e0} ContentLength:21 TransferEncoding:[] Close:false Uncompressed:false Trailer:map[] Request:0xc0000a6120 TLS:<nil>}

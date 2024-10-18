@@ -1,6 +1,0 @@
-2024/10/18 16:51:11 [ WARNING ] Failed to get array from response in CheckIfPositionExists().
-  -> Response: []
-  -> Trying again in 3000000000 seconds
-2024/10/18 16:51:15 [ WARNING ] Failed to get array from response in CheckIfPositionExists().
-  -> Response: []
-  -> Trying again in 6000000000 seconds

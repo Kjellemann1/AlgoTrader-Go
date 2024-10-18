@@ -1,1 +1,0 @@
-2024/10/18 02:33:16 Error:  websocket: bad handshake Response:  &{404 Not Found 404 HTTP/1.1 1 1 map[Connection:[keep-alive] Content-Length:[21] Content-Type:[text/plain; charset=utf-8] Date:[Fri, 18 Oct 2024 00:33:16 GMT] Strict-Transport-Security:[max-age=31536000; includeSubDomains]] {0xc0000acbd0} 21 [] false false map[] 0xc000116120 <nil>}

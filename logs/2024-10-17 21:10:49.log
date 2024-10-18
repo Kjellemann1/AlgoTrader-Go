@@ -1,5 +1,0 @@
-2024/10/17 23:10:49 [ OK ]	Connected to websocket for  crypto
-2024/10/17 23:10:49 [ OK ]	Authenticated with websocket for  crypto
-2024/10/17 23:10:49 [ OK ]	Connected to websocket for  stock
-2024/10/17 23:10:49 [ OK ]	Authenticated with websocket for  stock
-2024/10/17 23:10:49 Error message from websocket for stock: invalid syntax
