@@ -1,0 +1,138 @@
+
+package order
+
+import (
+  "strings"
+  "log"
+  "fmt"
+  "net/http"
+  "time"
+  "io"
+  "github.com/shopspring/decimal"
+  "github.com/valyala/fastjson"
+
+  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
+)
+
+
+func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
+  qty, _ := decimal.NewFromString("0")
+  if asset_class == "stock" {
+    qty = decimal.NewFromFloat(constant.ORDER_SIZE_USD / last_price).RoundDown(0)
+    if qty.Cmp(decimal.NewFromInt(1)) == -1 {
+      qty = decimal.NewFromInt(0)
+    }
+  } else if asset_class == "crypto" {
+    qty = decimal.NewFromFloat(constant.ORDER_SIZE_USD / last_price).RoundDown(9)
+  }
+  return qty
+}
+
+
+func CheckIfPositionExists(symbol string) (bool, decimal.Decimal) {
+  // TODO: Specific error handling
+  backoff_time_seconds := time.Duration(3) * time.Second
+  backoff_max_seconds := time.Duration(60) * time.Second
+  stripped_symbol := strings.Replace(symbol, "/", "", 1)
+  url := fmt.Sprintf("%s/positions", constant.ENDPOINT)
+  qty, _ := decimal.NewFromString("0")
+  var p = fastjson.Parser{}
+  for {
+    // Create request
+    req, err := http.NewRequest("GET", url, nil)
+    if err != nil {
+      log.Printf(
+        "[ WARNING ]\tChecking if position exsists failed when sending request.\n" +
+        "  -> Request: %+v\n  -> Error: %s\n  -> Trying again in %d seconds", 
+        req, err, backoff_time_seconds,
+      )
+      push.Error("Failed to create request when checking if position exists.", err)
+      backoff_time_seconds = backoff.Backoff(backoff_time_seconds, backoff_max_seconds)
+      continue
+    }
+    // Set headers
+    req.Header = constant.AUTH_HEADERS
+    // Send request
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+      log.Printf(
+        "[ WARNING ]\tChecking if position exists failed when sending request.\n" +
+        "  -> Response: %+v\n  -> Error: %s\n  -> Trying again in %d seconds", 
+        resp, err, backoff_time_seconds,
+      )
+      push.Error("Failed to send request when checking if position exists.", err)
+      backoff_time_seconds = backoff.Backoff(backoff_time_seconds, backoff_max_seconds)
+      continue
+    }
+    defer resp.Body.Close()
+    // Read response body
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+      log.Printf(
+        "[ WARNING ] Checking if positions exists failed.\n" +
+        "  -> Body: %s\n  -> Error: %s\n" + "  -> Trying again in %d seconds",
+        body, err, backoff_time_seconds,
+      )
+      push.Error("Failed to read response body when checking if position exists.", err)
+      backoff_time_seconds = backoff.Backoff(backoff_time_seconds, backoff_max_seconds)
+      continue
+    }
+    // Parse response body
+    parsed, err := p.ParseBytes(body)
+    if err != nil {
+      log.Printf(
+        "[ WARNING ] Parsing response in CheckIfPositionExists() failed.\n" +
+        "  -> Parsed: %s\n  -> Error: %s\n  -> Trying again in %d seconds", 
+        parsed, err, backoff_time_seconds,
+      )
+      push.Error("Failed to parse response body when checking if position exists.", err)
+      backoff_time_seconds = backoff.Backoff(backoff_time_seconds, backoff_max_seconds)
+      continue
+    }
+    // Get array returns nil if the array is empty, so need to check that before trying to get the array
+    if string(body) == "[]" {
+      return false, qty
+    } else if string(body) == `{"message":"forbidden."}` {
+      log.Printf(
+        "[ WARNING ] Forbidden response in CheckIfPositionExists().\n" +
+        "  -> Make sure HTTP headers are correct.\n  -> Body: %s\n  -> Trying again in %d seconds",
+        string(body), backoff_time_seconds,
+      )
+    }
+    // Get array from response
+    arr := parsed.GetArray()
+    if arr == nil {
+      log.Printf(
+        "[ WARNING ] Failed to get array from response in CheckIfPositionExists().\n" +
+        "  -> Response: %s\n  -> Trying again in %d seconds", string(body), backoff_time_seconds,
+      )
+      push.Error("Failed to get array from response body when checking if position exists.", nil)
+      backoff_time_seconds = backoff.Backoff(backoff_time_seconds, backoff_max_seconds)
+      continue
+    }
+    // Check if position exists
+    for _, v := range arr {
+      if string(v.GetStringBytes("symbol")) == stripped_symbol {
+        qty, err := decimal.NewFromString(string(v.GetStringBytes("qty")))
+        if err != nil {
+          qty, _ = decimal.NewFromString("0")
+        }
+        return true, qty
+      }
+    }
+    return false, qty
+  }
+}
+
+func CheckIfQtyMatches(symbol string, qty decimal.Decimal) bool {
+  check, current_qty := CheckIfPositionExists(symbol)
+  if !check {
+    return false
+  }
+  if current_qty.Cmp(qty) == 0 {
+    return true
+  }
+  return false
+}

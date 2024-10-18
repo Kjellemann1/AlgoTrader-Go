@@ -2,61 +2,73 @@
 package src
 
 import (
-  "time"
-  "github.com/shopspring/decimal"
+  // External packages
+  "github.com/shopspring/decimal" // https://pkg.go.dev/github.com/shopspring/decimal#section-readme
 )
 
-const BUFFER_SIZE int = 100
+const WINDOW_SIZE int = 1000
 
-type Asset struct {
-  TotalQty         decimal.Decimal
-  Open             [BUFFER_SIZE]float64
-  High             [BUFFER_SIZE]float64
-  Low              [BUFFER_SIZE]float64
-  Close            [BUFFER_SIZE]float64
-  Time             time.Time
-  bar_updated_flag bool
+// Moves each element one step to the left, and inserts the new value at the last position.
+func rollInt(arr *[WINDOW_SIZE]int, v int) {
+  copy(arr[:len(arr)-1], arr[1:])
+  arr[len(arr)-1] = v
 }
 
+func rollFloat(arr *[WINDOW_SIZE]float64, v float64) {
+  copy(arr[:len(arr)-1], arr[1:])
+  arr[len(arr)-1] = v
+}
+
+
+// Asset struct
+type Asset struct {
+  Symbol           string
+  TotalQty         decimal.Decimal
+  Open             [WINDOW_SIZE]float64  // For rolling windows alone a linked list would be more efficient. However, the
+  High             [WINDOW_SIZE]float64  // window is used for calculations that are repeated on every trade/bar update,
+  Low              [WINDOW_SIZE]float64  // meaning they are not necessarily more efficient as a whole, and would significantly
+  Close            [WINDOW_SIZE]float64  // add to the complexity of calculating indicators.
+  Time             string                // No need to convert Time to time.Time until necessary
+  lastCloseIsTrade bool
+}
+
+
+// Constructor for Asset
 func NewAsset() *Asset {
   return &Asset{
-    TotalQty: decimal.NewFromFloat(0),
-    bar_updated_flag: false,
+    lastCloseIsTrade: false,
   }
 }
 
-// Rolls the buffer, moving each element one step to the right, and inserting the new value at the first position.
-func rollInt(arr *[BUFFER_SIZE]int, v int) {
-  for i := len(arr) - 1; i > 0; i-- {
-    arr[i] = arr[i-1]
-  }
-  arr[0] = v
-}
 
-func rollFloat(arr *[BUFFER_SIZE]float64, v float64) {
-  for i := len(arr) - 1; i > 0; i-- {
-    arr[i] = arr[i-1]
+// Updates the window on Bar updates
+func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t string) {
+  rwmu.Lock()
+  defer rwmu.Unlock()
+  if a.lastCloseIsTrade {
+    a.Close[WINDOW_SIZE-1] = c
+  } else {
+    rollFloat(&a.Close, c)
+    a.Time = t
   }
-  arr[0] = v
-}
-
-func rollTime(arr *[BUFFER_SIZE]time.Time, v time.Time) {
-  for i := len(arr) - 1; i > 0; i-- {
-    arr[i] = arr[i-1]
-  }
-  arr[0] = v
-}
-
-func (a *Asset) MarketUpdateBar(o float64, h float64, l float64, c float64, t time.Time) {
   rollFloat(&a.Open, o)
   rollFloat(&a.High, h)
   rollFloat(&a.Low, l)
-  rollFloat(&a.Close, c)
   a.Time = t
+  a.lastCloseIsTrade = false
 }
 
-func (a *Asset) MarketUpdateTrade() {
-  if a.bar_updated_flag {
 
+// Updates the windows on Trade updates
+// This is not trade updates from the algo, but from other trades in the market
+func (a *Asset) UpdateWindowOnTrade(c float64, t string) {
+  rwmu.Lock()
+  defer rwmu.Unlock()
+  if a.lastCloseIsTrade {
+    a.Close[WINDOW_SIZE - 1] = c
+  } else {
+    rollFloat(&a.Close, c)
   }
+  a.Time = t
+  a.lastCloseIsTrade = true
 }

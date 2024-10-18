@@ -1,0 +1,6 @@
+2024/10/18 03:49:24 [ OK ]	Connected to websocket for stock
+2024/10/18 03:49:24 [ OK ]	Connected to websocket for crypto
+2024/10/18 03:49:24 [ OK ]	Authenticated with websocket for crypto
+2024/10/18 03:49:24 [ OK ]	Authenticated with websocket for stock
+2024/10/18 03:49:24 [ OK ]	All symbols present in websocket subscription for crypto
+2024/10/18 03:49:24 [ OK ]	All symbols present in websocket subscription for stock

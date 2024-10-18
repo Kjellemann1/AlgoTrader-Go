@@ -2,58 +2,49 @@
 package src
 
 import (
-  "os"
-  "net/http"
   "sync"
-
-  "github.com/joho/godotenv"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
 )
 
-var AUTH_HEADERS http.Header
+var rwmu sync.RWMutex
 
-func load_env() {
-  err := godotenv.Load()
-  if err != nil {
-    panic(err)
-  }
-  AUTH_HEADERS = http.Header{
-    "accept": {"application/json"},
-    "APCA-API-KEY-ID": {os.Getenv("PaperKey")},
-    "APCA-API-SECRET-KEY": {os.Getenv("PaperSecret")},
-  }
-}
 
-func socket(asset_class string, url string, query_chan chan string, position_monitor_chan chan map[string]string, wg *sync.WaitGroup) {
-  defer wg.Done()
-  stock_socket := Market{
-    asset_class: asset_class,
-    query_chan: query_chan,
-    position_monitor_chan: position_monitor_chan,
-    url: url,
-  }
-  stock_socket.Init()
-}
-
-// This is in practice the main function call
+// This is for all intents and purposes the main function
 func Run() {
-  load_env()
-
-  // Initialiser kanalene her
-  query_chan := make(chan string)
-  stock_position_monitor_chan := make(chan map[string]string)
-  crypto_position_monitor_chan := make(chan map[string]string)
+  query_chan := make(chan string, constant.CHANNEL_BUFFER_SIZE)
+  order_update_chan := make(map[string]chan OrderUpdate)
 
   var wg sync.WaitGroup
-  wg.Add(1)
 
-  // Start socket-goroutines og send spesifikke kanaler til hver socket
-  go socket("stock", "wss://stream.data.alpaca.markets/v2/test", query_chan, stock_position_monitor_chan, &wg)
-  // go socket("crypto", "wss://stream.data.alpaca.markets/v2/test", query_chan, crypto_position_monitor_chan, &wg)
+  // Stocks
+  if len(constant.STOCK_LIST) > 0 {
+    stock_asset_map := map[string]*Asset{}
+    order_update_chan["stock"] = make(chan OrderUpdate, constant.CHANNEL_BUFFER_SIZE)
+    for _, symbol := range constant.STOCK_LIST {
+      stock_asset_map[symbol] = NewAsset()
+    }
+    wg.Add(1)
+    go NewMarket("stock", "wss://stream.data.alpaca.markets/v2/iex", stock_asset_map, query_chan, order_update_chan["stock"], &wg)
+  }
+
+  // Crypto
+  if len(constant.CRYPTO_LIST) > 0 {
+    crypto_asset_map := make(map[string]*Asset)
+    order_update_chan["crypto"] = make(chan OrderUpdate, constant.CHANNEL_BUFFER_SIZE)
+    for _, symbol := range constant.CRYPTO_LIST {
+      crypto_asset_map[symbol] = NewAsset()
+    }
+    wg.Add(1)
+    go NewMarket("crypto", "wss://stream.data.alpaca.markets/v1beta3/crypto/us", crypto_asset_map, query_chan, order_update_chan["crypto"], &wg)
+  } 
+
+  // Account
+  wg.Add(1)
+  go NewAccount(order_update_chan, &wg)
 
   wg.Wait()
 
-  // Lukk kanalene hvis de ikke skal brukes mer
   close(query_chan)
-  close(stock_position_monitor_chan)
-  close(crypto_position_monitor_chan)
+  close(order_update_chan["stock"])
+  close(order_update_chan["crypto"])
 }
