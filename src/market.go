@@ -23,7 +23,7 @@ import (
 
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
-  _"github.com/Kjellemann1/AlgoTrader-Go/src/util/prettyjson"
+  _"github.com/Kjellemann1/AlgoTrader-Go/src/util/pretty"
 )
 
 
@@ -82,20 +82,17 @@ func (m *Market) CheckForSignal(symbol string) {
 func (m *Market) onMarketBarUpdate(element *fastjson.Value) {
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
-  // TODO: Assert that the asset exists on initialization of the Market instance
-  // and instead here check if the asset exists in the list of assets
-  _, ok := m.assets[symbol]
-  if !ok {
+  if asset, ok := m.assets[symbol]; ok {
+    asset.UpdateWindowOnBar(
+      element.GetFloat64("o"),
+      element.GetFloat64("h"),
+      element.GetFloat64("l"),
+      element.GetFloat64("c"),
+      string(element.GetStringBytes("t")),
+    )
+  } else {
     // TODO: Handle this error
-    return
   }
-  m.assets[symbol].UpdateWindowOnBar(
-    element.GetFloat64("o"),
-    element.GetFloat64("h"),
-    element.GetFloat64("l"),
-    element.GetFloat64("c"),
-    string(element.GetStringBytes("t")),
-  )
   m.CheckForSignal(symbol)
 }
 
@@ -106,7 +103,7 @@ func (m *Market) onMarketTradeUpdate(element *fastjson.Value) {
   t := string(element.GetStringBytes("t"))
   price := element.GetFloat64("p")
   fmt.Printf("Trade update: %s %s %f\n", symbol, t, price)
-  if asset, ok := m.assets[symbol]; !ok {
+  if asset, ok := m.assets[symbol]; ok {
     asset.UpdateWindowOnTrade(price, t)
   } else {
     // TODO: Handle this error

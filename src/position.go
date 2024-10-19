@@ -63,9 +63,11 @@ func (p *Position) Init() {
 // Log the opening to database and console
 func (p *Position) LogOpen() {
   // TODO
+  // Implement log if buffer is full
 }
 
 // Log the closing to database and console
 func (p *Position) LogClose() {
   // TODO
+  // Implement log if buffer is full
 }

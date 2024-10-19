@@ -1,7 +1,7 @@
 
 // Printing and logging json in a more readable format
 
-package prettyjson
+package pretty
 
 import (
   "encoding/json"

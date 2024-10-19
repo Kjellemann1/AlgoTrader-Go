@@ -127,7 +127,6 @@ func (a *Account) messageHandler(message []byte) {
       a.onTradeUpdate(parsed_msg)
     case "listening":
       log.Println("[ OK ]\tListening to order updates")
-      panic("END HERE")
   }
 }
 

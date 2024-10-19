@@ -3,10 +3,16 @@ package backoff
 
 import "time"
 
-func Backoff(duration time.Duration, max_duration time.Duration) time.Duration {
-  time.Sleep(duration)
-  if duration * 2 > max_duration {
-    return max_duration
+func BackoffWithMax(backoff_sec *int, backoff_max_sec int) {
+  time.Sleep(time.Duration(*backoff_sec) * time.Second)
+  if *backoff_sec >= backoff_max_sec {
+    *backoff_sec = backoff_max_sec
+  } else{
+    *backoff_sec = *backoff_sec * 2
   }
-  return duration * 2
+}
+
+func Backoff(backoff_sec *int) {
+  time.Sleep(time.Duration(*backoff_sec) * time.Second)
+  *backoff_sec = *backoff_sec * 2
 }

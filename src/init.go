@@ -28,15 +28,24 @@ func init() {
 }
 
 
-// Load the API key and secret from the .env file
+// Load environment variables and set up constants
 func init() {
   err := godotenv.Load()
   if err != nil {
     panic(err)
   }
 
+  constant.PUSH_TOKEN = os.Getenv("PushoverToken")
+  constant.PUSH_USER = os.Getenv("PushoverUser")
+
   constant.KEY = os.Getenv("PaperKey")
   constant.SECRET = os.Getenv("PaperSecret")
+
+  constant.DB_USER = os.Getenv("DBUser")
+  constant.DB_PASSWORD = os.Getenv("DBPassword")
+  constant.DB_NAME = os.Getenv("DBDatabase")
+  constant.DB_HOST = os.Getenv("DBHost")
+  constant.DB_PORT = os.Getenv("DBPort")
 
   // Panic if missing key or secret
   if constant.KEY == "" || constant.SECRET == "" {

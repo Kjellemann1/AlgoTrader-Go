@@ -5,6 +5,7 @@ type Strategy struct {
   *Asset
 }
 
+// Remember to handle NO_NEW_TRADES flag
 
 func (s *Strategy) ClosePosition() {
   // TODO

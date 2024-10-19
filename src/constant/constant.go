@@ -1,17 +1,23 @@
 
 package constant
 
-import (
-  "net/http"
-)
+import "net/http"
 
 
-const CHANNEL_BUFFER_SIZE int = 10
+const CHANNEL_BUFFER_SIZE int = 50
 const ORDER_SIZE_USD float64 = 500
 const ENDPOINT = "https://paper-api.alpaca.markets/v2"
 var AUTH_HEADERS http.Header
 var KEY string
 var SECRET string
+var PUSH_TOKEN string
+var PUSH_USER string
+
+var DB_USER string
+var DB_PASSWORD string
+var DB_NAME string
+var DB_HOST string
+var DB_PORT string
 
 
 var STOCK_LIST = []string{
