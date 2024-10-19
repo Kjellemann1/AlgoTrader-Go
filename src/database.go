@@ -16,32 +16,34 @@ import (
 
 
 type Query struct {
-  query_type string
-  price float64
-  db_key string
-  order_id string
-  symbol string
-  asset_class string
-  side string  // "buy", "sell"
-  strat_name string
-  order_type string
-  qty decimal.Decimal  // Stored as a string to avoid floating point errors
-  price_time string
-  trigger_time string
-  trigger_price float64
-  fill_time string
+  query_type       string
+  price            float64
+  db_key           string
+  action           string
+  order_id         string
+  symbol           string
+  asset_class      string
+  side             string  // "buy", "sell"
+  strat_name       string
+  order_type       string
+  qty              decimal.Decimal  // Stored as a string to avoid floating point errors
+  price_time       string
+  trigger_time     string
+  trigger_price    float64
+  fill_time        string
   filled_avg_price float64
-  order_sent_time string
+  order_sent_time  string
+  trailing_stop    float64
   bad_for_analysis bool
 }
 
 
 type Database struct {
-  conn *sql.DB
-  query_chan chan *Query
-  insert_trade *sql.Stmt
-  insert_position *sql.Stmt
-  delete_position *sql.Stmt
+  conn                 *sql.DB
+  query_chan           chan *Query
+  insert_trade         *sql.Stmt
+  insert_position      *sql.Stmt
+  delete_position      *sql.Stmt
   update_trailing_stop *sql.Stmt
 }
 
@@ -51,7 +53,7 @@ func (db *Database) prepQueries() error {
   var err error
   db.insert_trade, err = db.conn.Prepare(`
     INSERT INTO trades (
-      action, open_order_id, symbol, asset_class, side, strat_name, order_type, qty, price_time,
+      action, order_id, symbol, asset_class, side, strat_name, order_type, qty, price_time,
       trigger_time, trigger_price, fill_time, filled_avg_price, order_sent_time, bad_for_analysis
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
   `)
@@ -60,9 +62,9 @@ func (db *Database) prepQueries() error {
   }
   db.insert_position, err = db.conn.Prepare(`
     INSERT INTO positions (
-      db_key, open_order_id, symbol, asset_class, side, strat_name, order_type, qty, price_time,
-      trigger_time, trigger_price, fill_time, filled_avg_price, order_sent_time, bad_for_analysis
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      db_key, order_id, symbol, asset_class, side, strat_name, order_type, qty, price_time,
+      trigger_time, trigger_price, fill_time, filled_avg_price, order_sent_time, trailing_stop, bad_for_analysis
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
   `)
   if err != nil {
     return err
@@ -117,7 +119,7 @@ func (db *Database) errorHandler(
     err = db.pingAndsetupQueries()
     if err != nil {
       if retries <= 3 {  // Too many retries here could lead to stack overflow as a result of recursion
-        NO_NEW_TRADES = true
+        // TODO: Implement no new trades flag
         push.Error(fmt.Sprintf("Database connection lost\n  -> Trying again in %d\n", *backoff_sec), err)
         log.Printf(
           "[ ERROR ]\tFailed to reconnect to database\n" +
@@ -131,6 +133,7 @@ func (db *Database) errorHandler(
         push.Error("MAX RETRIES REACHED.\nCLOSING ALL POSITIONS AND SHUTTING DOWN.", err)
         log.Printf("[ ERROR ]\tMAX RETRIES REACHED.\nCLOSING ALL POSITIONS AND SHUTTING DOWN.\n")
         order.CloseAllPositions(2, 0)
+        log.Panicln("SHUTTING DOWN")
       }
     }
   }
@@ -146,24 +149,45 @@ func (db *Database) errorHandler(
 
 // TODO: Change queries so they are correct(but have to see how the database is structured first)
 func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
-  qty := query.qty.String()
   response, err := db.insert_trade.Exec(
-    query.db_key, query.order_id, query.symbol, query.asset_class, query.side,
-    query.strat_name, query.order_type, qty, query.price_time,
-    query.trigger_time, query.trigger_price, query.fill_time,
-    query.filled_avg_price, query.order_sent_time, query.bad_for_analysis,
+    query.action,
+    query.order_id,
+    query.symbol,
+    query.asset_class,
+    query.side,
+    query.strat_name,
+    query.order_type,
+    query.qty, 
+    query.price_time,
+    query.trigger_time,
+    query.trigger_price,
+    query.fill_time,
+    query.filled_avg_price,
+    query.order_sent_time,
+    query.bad_for_analysis,
   )
   db.errorHandler(err, "insertTrade", response, query, retries, &backoff_sec)
 }
 
 
 func (db *Database) insertPosition(query *Query, backoff_sec int, retries int) {
-  qty := query.qty.String()
   response, err := db.insert_position.Exec(
-    query.db_key, query.order_id, query.symbol, query.asset_class, query.side,
-    query.strat_name, query.order_type, qty, query.price_time,
-    query.trigger_time, query.trigger_price, query.fill_time,
-    query.filled_avg_price, query.order_sent_time, query.bad_for_analysis,
+    query.db_key,
+    query.order_id,
+    query.symbol,
+    query.asset_class,
+    query.side,
+    query.strat_name,
+    query.order_type,
+    query.qty,
+    query.price_time,
+    query.trigger_time,
+    query.trigger_price,
+    query.fill_time,
+    query.filled_avg_price,
+    query.order_sent_time,
+    query.trailing_stop,
+    query.bad_for_analysis,
   )
   db.errorHandler(err, "insertPosition", response, query, retries, &backoff_sec)
 }

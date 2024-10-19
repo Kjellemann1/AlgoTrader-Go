@@ -23,6 +23,7 @@ func rollFloat(arr *[WINDOW_SIZE]float64, v float64) {
 // Asset struct
 type Asset struct {
   Symbol           string
+  Positions        map[string]*Position
   TotalQty         decimal.Decimal
   Open             [WINDOW_SIZE]float64  // For rolling windows alone a linked list would be more efficient. However, the
   High             [WINDOW_SIZE]float64  // window is used for calculations that are repeated on every trade/bar update,
@@ -60,7 +61,6 @@ func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t 
 
 
 // Updates the windows on Trade updates
-// This is not trade updates from the algo, but from other trades in the market
 func (a *Asset) UpdateWindowOnTrade(c float64, t string) {
   rwmu.Lock()
   defer rwmu.Unlock()

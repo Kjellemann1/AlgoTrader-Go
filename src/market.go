@@ -3,11 +3,6 @@
 // market, as well as order updates from the Account instance, and updates the algo with this information.
 
 
-  // log.Println("[ OK ]     ", msg)
-  // log.Println("[ ERROR ]  ", )
-  // log.Println("[ WARNING ]", )
-
-
 package src
 
 import (
@@ -28,13 +23,13 @@ import (
 
 
 type Market struct {
-  asset_class string
-  db_chan chan string
-  assets map[string]*Asset
+  asset_class       string
+  db_chan           chan string
+  assets            map[string]*Asset
   order_update_chan chan OrderUpdate
-  conn *websocket.Conn
-  url string
-  parser fastjson.Parser
+  conn              *websocket.Conn
+  url               string
+  parser            fastjson.Parser
 }
 
 
@@ -170,7 +165,7 @@ func (m *Market) connect() {
   }
   sub_msg := []byte(fmt.Sprintf(`{"action":"subscribe", "trades":["%s"], "bars":["%s"]}`, sub_msg_symbols, sub_msg_symbols))
   if err := m.conn.WriteMessage(websocket.TextMessage, sub_msg); err != nil {
-    panic(err)
+    log.Panicln(err.Error())
   }
   // Receive subscription message
   _, sub_msg, err = m.conn.ReadMessage()
@@ -202,7 +197,8 @@ func (m *Market) marketUpdateListen(wg *sync.WaitGroup) {
 func (m *Market) orderUpdateListen(wg *sync.WaitGroup) {
   defer wg.Done()
   for {
-    // order_update := <-m.order_update_chan
+    update := <-m.order_update_chan
+    m.orderUpdateHandler(update)
   }
 }
 
@@ -210,10 +206,8 @@ func (m *Market) orderUpdateListen(wg *sync.WaitGroup) {
 // Main listen function
 func (m *Market) listen() error {
   wg := sync.WaitGroup{}
-  // Listen to price updates from the market
   wg.Add(1)
   go m.marketUpdateListen(&wg)
-  // Listen for order updates from Account
   wg.Add(1)
   go m.orderUpdateListen(&wg)
   wg.Wait()
@@ -247,3 +241,70 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset, db_chan
   m.connect()
   m.listen()
 }
+
+
+func (m *Market) orderUpdateHandler(u OrderUpdate) {
+  var pos *Position = m.assets[u.Symbol].Positions[u.Strat_name]
+  if pos.OpenOrderPendingFlag {
+    if u.PositionQty != nil {
+      pos.PositionQty = u.PositionQty
+    }
+    if u.FilledAvgPrice != nil {
+      pos.OpenFilledAvgPrice = u.FilledAvgPrice
+    }
+    if u.FillTime != nil {
+      pos.OpenFillTime = u.FillTime
+    }
+    if u.event == "fill" || u.event == "canceled" {
+      pos.OpenOrderPendingFlag = false
+      if pos.PositionQty == 0 {
+        delete(m.assets[u.Symbol].Positions, u.Strat_name)
+      } else {
+    }
+  }
+}
+
+        // try:
+        //   if self.assets[symbol].positions[strategy_name].close_order_pending_flag:
+        //     if event in {"partial_fill", "fill", "canceled"}:
+        //       if position_qty is not None:
+        //         self.assets[symbol].positions[strategy_name].position_qty = position_qty
+        //       if filled_avg_price is not None:
+        //         self.assets[symbol].positions[strategy_name].close_filled_avg_price = float(filled_avg_price)
+        //       if fill_time is not None:
+        //         self.assets[symbol].positions[strategy_name].close_fill_time = fill_time
+        //       if event in {"fill", "canceled"}:
+        //         self.assets[symbol].positions[strategy_name].close_order_pending_flag = False
+        //         if self.assets[symbol].positions[strategy_name].position_qty == 0:  # Can technically be negative now if there is an error, which needs to be handled  # noqa
+        //           queries = await self.assets[symbol].positions[strategy_name].log_close()
+        //           if queries is not None:
+        //             for query in queries:
+        //               self.db_queue.put(query)
+        //           del self.assets[symbol].positions[strategy_name]
+        //           total_qty_check(self.assets[symbol], "CLOSE")
+        //     continue
+        // except Exception as e:
+        //   raise Exception(f"Error in Close logic: {e}") from e
+        //
+        // # Open
+        // try:
+        //   if self.assets[symbol].positions[strategy_name].open_order_pending_flag:
+        //     if event in {"partial_fill", "fill", "canceled"}:
+        //       if position_qty is not None:
+        //         self.assets[symbol].positions[strategy_name].position_qty = position_qty
+        //       if filled_avg_price is not None:
+        //         self.assets[symbol].positions[strategy_name].open_filled_avg_price = float(filled_avg_price)
+        //       if fill_time is not None:
+        //         self.assets[symbol].positions[strategy_name].open_fill_time = fill_time
+        //       if event in {"fill", "canceled"}:
+        //         self.assets[symbol].positions[strategy_name].open_order_pending_flag = False
+        //         if self.assets[symbol].positions[strategy_name].position_qty == 0:
+        //           del self.assets[symbol].positions[strategy_name]
+        //         else:
+        //           queries = await self.assets[symbol].positions[strategy_name].log_open()
+        //           if queries is not None:
+        //             for query in queries:
+        //               self.db_queue.put(query)
+        //               total_qty_check(self.assets[symbol], "OPEN")
+        // except Exception as e:
+        //   raise Exception(f"Error in Open logic: {e}") from e

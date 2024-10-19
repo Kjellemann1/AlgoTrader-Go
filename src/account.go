@@ -10,34 +10,47 @@ import (
   _"time"
   "github.com/gorilla/websocket"
   "github.com/valyala/fastjson"
+  "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
 )
 
 
-func grepStrategyName(orderID string) (string, error) {
+func grepStratName(orderID string) (string, error) {
   pattern := `strat\[(.*?)\]`
   re := regexp.MustCompile(pattern)
   match := re.FindStringSubmatch(orderID)
-
   if match != nil && len(match) > 1 {
-    return match[1], nil // Returnerer innholdet inne i klammene
+    return match[1], nil
   }
-  return "", errors.New("") // Returnerer tom streng hvis ingen match finnes
+  return "", errors.New("")
+}
+
+
+func grepAction(orderID string) (string, error) {
+  pattern := `action\[(.*?)\]`
+  re := regexp.MustCompile(pattern)
+  match := re.FindStringSubmatch(orderID)
+  if match != nil && len(match) > 1 {
+    return match[1], nil
+  }
+  return "", errors.New("")
 }
 
 
 // Used to send order updates received in Account instance to MarketSocket instanc(es)
 // through the order_update channel. 
 type OrderUpdate struct {
-  event string
-  asset_class string
-  strategy_name string
-  side string
-  symbol string
-  asset_qty int
-  fill_time string
-  filled_avg_price float64
+  Event          string
+  AssetClass     string
+  StratName      string
+  Action         string
+  Side           *string
+  Symbol         *string
+  AssetQty       *decimal.Decimal
+  FillTime       *string
+  FilledAvgPrice *float64
 }
 
 
@@ -45,7 +58,7 @@ type OrderUpdate struct {
 type Account struct {
   conn *websocket.Conn
   parser fastjson.Parser
-  order_update_chan map[string] chan OrderUpdate
+  orderupdate_chan map[string]chan OrderUpdate
   // TODO stock and crypto cleared for shutdown
 }
 
@@ -73,42 +86,10 @@ func (a *Account) connect() {
 func (a *Account) onAuth(element *fastjson.Value) {
   msg := string(element.Get("data").GetStringBytes("status"))
   if msg == "authorized" {
-    log.Println("[ OK ]\tAuthorized with account websocket")
+    log.Println("[ OK ]\tAuthenticated with account websocket")
   } else {
     log.Panicln("[ ERROR ]\tAuthorization with account websocket failed")
   }
-}
-
-
-func (a *Account) onTradeUpdate(element *fastjson.Value) {
-  event := string(element.Get("data").GetStringBytes("event"))
-  // All possible events are listed here. https://docs.alpaca.markets/docs/websocket-streaming. Not all are not handled.
-  if event != "fill" && event != "partial_fill" && event != "canceled" {
-    return
-  }
-  asset_class := string(element.Get("data").Get("order").GetStringBytes("asset_class"))
-  if asset_class == "us_equity" {
-    asset_class = "stock"
-  }
-  fill_time := string(element.Get("data").Get("order").GetStringBytes("filled_at"))
-  order_id := string(element.Get("data").Get("order").GetStringBytes("client_order_id"))
-  strategy_name, err := grepStrategyName(order_id)
-  if err != nil {
-    push.Error("Grepping strategy name failed", err)
-    log.Printf("[ Error ]\tGrepping strategy name failed\n  -> %s", order_id)
-    return
-  }
-  filled_avg_price := element.Get("data").Get("order").GetFloat64("filled_avg_price")
-  thread_message := OrderUpdate{
-    event: event,
-    strategy_name: strategy_name,
-    side: string(element.Get("data").Get("order").GetStringBytes("side")),
-    symbol: string(element.Get("data").Get("order").GetStringBytes("symbol")),
-    asset_qty: element.Get("data").Get("position_qty").GetInt(),
-    fill_time: fill_time,
-    filled_avg_price: filled_avg_price,
-  }
-  a.order_update_chan[asset_class] <- thread_message
 }
 
 
@@ -147,8 +128,115 @@ func NewAccount(order_update_chan map[string] chan OrderUpdate, wg *sync.WaitGro
   defer wg.Done()
   a := &Account{
     parser: fastjson.Parser{},
-    order_update_chan: order_update_chan,
+    orderupdate_chan: order_update_chan,
   }
   a.connect()
   a.listen()
+}
+
+
+func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
+  // Extract event. Shutdown if nil
+  event := parsed_msg.Get("data").GetStringBytes("event")
+  if event == nil {
+    push.Error("EVENT NOT IN TRADE UPDATE\nSHUTTING DOWN\n", errors.New(""))
+    log.Printf(
+      "[ FATAL ]\tEvent not in trade update\n"+
+      "  -> Closing all positions and shutting down\n" +
+      "  -> Parsed message: %s\n",
+    parsed_msg)
+    order.CloseAllPositions(2, 0)
+    log.Panicln("SHUTTING DOWN")
+  }
+  event_str := string(event)
+  // Extract asset class. Shutdown if nil
+  asset_class := parsed_msg.Get("data").Get("order").GetStringBytes("asset_class")
+  if asset_class == nil {
+    push.Error("ASSET CLASS NOT IN TRADE UPDATE\nSHUTTING DOWN\n", errors.New(""))
+    log.Printf(
+      "[ FATAL ]\tAsset class not in trade update\n"+
+      "  -> Closing all positions and shutting down\n" +
+      "  -> Parsed message: %s\n",
+    parsed_msg)
+    order.CloseAllPositions(2, 0)
+    log.Panicln("SHUTTING DOWN")
+  }
+  asset_class_str := string(asset_class)
+  asset_class_ptr := &asset_class_str
+  // Extract order id. Return if nil
+  order_id := parsed_msg.Get("data").Get("order").GetStringBytes("client_order_id")
+  if order_id == nil {
+    push.Warning("Order id not found", errors.New(""))
+    log.Println("[ WARNING ]\tOrder ID not found")
+    return
+  }
+  order_id_str := string(order_id)
+  // Grep strat_name from order id. Return if nil
+  strat_name, err := grepStratName(order_id_str)
+  if err != nil {
+    return
+  }
+  // Grep action from order_id. Return if nil
+  action, err := grepAction(order_id_str)
+  if err != nil {
+    return
+  }
+  // Extract side
+  var side_ptr *string
+  side := parsed_msg.Get("data").Get("order").GetStringBytes("side")
+  if side != nil {
+    side_str := string(side)
+    side_ptr = &side_str
+  }
+  // Extract symbol
+  var symbol_ptr *string
+  symbol := parsed_msg.Get("data").Get("order").GetStringBytes("symbol")
+  if symbol != nil {
+    symbol_str := string(symbol)
+    symbol_ptr = &symbol_str
+  }
+  // Extract asset_qty
+  var asset_qty_ptr *decimal.Decimal
+  asset_qty := parsed_msg.Get("data").Get("order").GetStringBytes("position_qty")
+  if asset_qty != nil {
+    asset_qty_dec, err := decimal.NewFromString(string(asset_qty))
+    if err != nil {
+      push.Error("FAILED TO CONVERT ASSET QTY TO decimal.Decimal", err)
+      log.Printf(
+        "[ FATAL ]\tFailed to convert asset qty to decimal.Decimal\n"+
+        "  -> Closing all positions and shutting down\n"+
+        "  -> Asset qty: %s\n",
+        "  -> Error: %s\n",
+      asset_qty, err)
+      return
+    }
+    asset_qty_ptr = &asset_qty_dec
+  }
+  // Extract fill_time
+  var fill_time_ptr *string
+  fill_time := parsed_msg.Get("data").Get("order").GetStringBytes("filled_at")
+  if fill_time != nil {
+    fill_time_str := string(fill_time)
+    fill_time_ptr = &fill_time_str
+  }
+  // Extract filled_avg_price
+  var filled_avg_price_ptr *float64
+  filled_avg_price := parsed_msg.Get("data").Get("order").GetFloat64("filled_avg_price")
+  if filled_avg_price != 0 {  // GetFloat64 returns 0 if nil
+    filled_avg_price_ptr = &filled_avg_price
+  }
+
+
+  // Send update to Market instance
+  a.orderupdate_chan[*asset_class_ptr] <- OrderUpdate {
+    Event:            event_str,
+    AssetClass:       asset_class_str,
+    StratName:        strat_name,
+    Action:           action,
+    Side:             side_ptr,
+    Symbol:           symbol_ptr,
+    AssetQty:         asset_qty_ptr,
+    FillTime:         fill_time_ptr,
+    FilledAvgPrice:   filled_avg_price_ptr,
+  }
 }

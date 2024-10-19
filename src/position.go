@@ -13,35 +13,33 @@ import (
 )
 
 type Position struct {
-  Symbol   string
-  AssetClass string
-  StratName string
-  Qty decimal.Decimal
-  BadForAnalysis bool
-  // The order id is primarily used to track the order status. It contains the strategy name, which is used to
-  // identify the strategy that placed the order when getting order updates from the broker.
-  OrderID string
-
-  OpenSide string
-  OpenOrderPendingFlag bool
-  OpenOrderSentTime time.Time
-  OpenOrderType string
-  OpenTriggerTime time.Time
-  OpenTriggerPrice float64
-  OpenFillTime time.Time
-  OpenFilledQty decimal.Decimal
-  OpenFilledAvgPrice float64
-  OpenPriceTime time.Time
+  Symbol                string
+  AssetClass            string
+  StratName             string
+  Qty                   decimal.Decimal
+  BadForAnalysis        bool
+  OrderID               string  // The order id is primarily used to track the order status. It contains the strategy name, which is used to
+                                // identify the strategy that placed the order when getting order updates from the broker.
+  OpenSide              string
+  OpenOrderPendingFlag  bool
+  OpenOrderSentTime     time.Time
+  OpenOrderType         string
+  OpenTriggerTime       time.Time
+  OpenTriggerPrice      float64
+  OpenFillTime          time.Time
+  OpenFilledQty         decimal.Decimal
+  OpenFilledAvgPrice    float64
+  OpenPriceTime         time.Time
 
   CloseOrderPendingFlag bool
-  CloseOrderSentTime time.Time
-  CloseOrderType string
-  CloseFilledQty decimal.Decimal
-  CloseTriggerTime time.Time
-  CloseTriggerPrice float64
-  CloseFillTime time.Time
-  CloseFilledAvgPrice float64
-  ClosePriceTime time.Time
+  CloseOrderSentTime    time.Time
+  CloseOrderType        string
+  CloseFilledQty        decimal.Decimal
+  CloseTriggerTime      time.Time
+  CloseTriggerPrice     float64
+  CloseFillTime         time.Time
+  CloseFilledAvgPrice   float64
+  ClosePriceTime        time.Time
 }
 
 // Constructor for Position

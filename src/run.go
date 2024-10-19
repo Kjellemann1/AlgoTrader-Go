@@ -54,7 +54,6 @@ func Run() {
     )
   } 
 
-
   wg.Wait()
 
   close(query_chan)
