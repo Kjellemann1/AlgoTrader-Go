@@ -24,20 +24,39 @@ func rollFloat(arr *[WINDOW_SIZE]float64, v float64) {
 type Asset struct {
   Symbol           string
   Positions        map[string]*Position
-  TotalQty         decimal.Decimal
-  Open             [WINDOW_SIZE]float64  // For rolling windows alone a linked list would be more efficient. However, the
-  High             [WINDOW_SIZE]float64  // window is used for calculations that are repeated on every trade/bar update,
-  Low              [WINDOW_SIZE]float64  // meaning they are not necessarily more efficient as a whole, and would significantly
-  Close            [WINDOW_SIZE]float64  // add to the complexity of calculating indicators.
-  Time             string                // No need to convert Time to time.Time until necessary
+  AssetQty         decimal.Decimal
+  AssetClass       string
+  Open             [WINDOW_SIZE]float64
+  High             [WINDOW_SIZE]float64
+  Low              [WINDOW_SIZE]float64
+  Close            [WINDOW_SIZE]float64
+  Time             string
   lastCloseIsTrade bool
 }
 
 
+func (a *Asset) SumPosQtyEqAssetQty() bool {
+  rwmu.RLock()
+  defer rwmu.RUnlock()
+  count, _ := decimal.NewFromString("0")
+  for _, val := range a.Positions {
+    count = count.Add(val.Qty)
+  }
+  if a.AssetQty.Compare(count) != 0 {
+    return false
+  } else {
+    return true
+  }
+}
+
+
 // Constructor for Asset
-func NewAsset() *Asset {
+func NewAsset(asset_class string, symbol string) *Asset {
   return &Asset{
     lastCloseIsTrade: false,
+    Positions: make(map[string]*Position),
+    AssetClass: asset_class,
+    Symbol: symbol,
   }
 }
 
@@ -71,4 +90,13 @@ func (a *Asset) UpdateWindowOnTrade(c float64, t string) {
   }
   a.Time = t
   a.lastCloseIsTrade = true
+}
+
+
+// Remove position
+// TODO: Remove position from database as well
+func (a *Asset) RemovePosition(strat_name string) {
+  rwmu.Lock()
+  defer rwmu.Unlock()
+  delete(a.Positions, strat_name)
 }

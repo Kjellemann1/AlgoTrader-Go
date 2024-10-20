@@ -139,7 +139,7 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
   // Extract event. Shutdown if nil
   event := parsed_msg.Get("data").GetStringBytes("event")
   if event == nil {
-    push.Error("EVENT NOT IN TRADE UPDATE\nSHUTTING DOWN\n", errors.New(""))
+    push.Error("EVENT NOT IN TRADE UPDATE\nSHUTTING DOWN\n", nil)
     log.Printf(
       "[ FATAL ]\tEvent not in trade update\n"+
       "  -> Closing all positions and shutting down\n" +
@@ -149,10 +149,15 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
     log.Panicln("SHUTTING DOWN")
   }
   event_str := string(event)
+  // Only handle fill, partial_fill and canceled events.
+  // Other events are likely not relevant. https://alpaca.markets/docs/api-documentation/api-v2/streaming/
+  if event_str != "fill" && event_str != "partial_fill" && event_str != "canceled" {
+    return
+  }
   // Extract asset class. Shutdown if nil
   asset_class := parsed_msg.Get("data").Get("order").GetStringBytes("asset_class")
   if asset_class == nil {
-    push.Error("ASSET CLASS NOT IN TRADE UPDATE\nSHUTTING DOWN\n", errors.New(""))
+    push.Error("ASSET CLASS NOT IN TRADE UPDATE\nSHUTTING DOWN\n", nil)
     log.Printf(
       "[ FATAL ]\tAsset class not in trade update\n"+
       "  -> Closing all positions and shutting down\n" +
@@ -166,7 +171,7 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
   // Extract order id. Return if nil
   order_id := parsed_msg.Get("data").Get("order").GetStringBytes("client_order_id")
   if order_id == nil {
-    push.Warning("Order id not found", errors.New(""))
+    push.Warning("Order id not found", nil)
     log.Println("[ WARNING ]\tOrder ID not found")
     return
   }
@@ -205,10 +210,11 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
       log.Printf(
         "[ FATAL ]\tFailed to convert asset qty to decimal.Decimal\n"+
         "  -> Closing all positions and shutting down\n"+
-        "  -> Asset qty: %s\n",
+        "  -> Asset qty: %s\n" +
         "  -> Error: %s\n",
       asset_qty, err)
-      return
+      order.CloseAllPositions(2, 0)
+      log.Panicln("Shutting down")
     }
     asset_qty_ptr = &asset_qty_dec
   }
@@ -222,7 +228,7 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
   // Extract filled_avg_price
   var filled_avg_price_ptr *float64
   filled_avg_price := parsed_msg.Get("data").Get("order").GetFloat64("filled_avg_price")
-  if filled_avg_price != 0 {  // GetFloat64 returns 0 if nil
+  if filled_avg_price != 0 {  // GetFloat64 returns 0 if doesn't exist
     filled_avg_price_ptr = &filled_avg_price
   }
 

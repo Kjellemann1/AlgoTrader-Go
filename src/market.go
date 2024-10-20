@@ -14,11 +14,11 @@ import (
   "strings"
   "github.com/valyala/fastjson"
   "github.com/gorilla/websocket"
-  _"github.com/shopspring/decimal"
+  "github.com/shopspring/decimal"
 
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
-  _"github.com/Kjellemann1/AlgoTrader-Go/src/util/pretty"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
 )
 
 
@@ -29,7 +29,6 @@ type Market struct {
   order_update_chan chan OrderUpdate
   conn              *websocket.Conn
   url               string
-  parser            fastjson.Parser
 }
 
 
@@ -68,6 +67,7 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
   }
 }
 
+
 func (m *Market) CheckForSignal(symbol string) {
   s := Strategy{Asset: m.assets[symbol]}
   s.CheckForSignal()
@@ -77,17 +77,14 @@ func (m *Market) CheckForSignal(symbol string) {
 func (m *Market) onMarketBarUpdate(element *fastjson.Value) {
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
-  if asset, ok := m.assets[symbol]; ok {
-    asset.UpdateWindowOnBar(
+  m.assets[symbol].UpdateWindowOnBar(
       element.GetFloat64("o"),
       element.GetFloat64("h"),
       element.GetFloat64("l"),
       element.GetFloat64("c"),
       string(element.GetStringBytes("t")),
     )
-  } else {
-    // TODO: Handle this error
-  }
+  fmt.Println("Bar update:", symbol)
   m.CheckForSignal(symbol)
 }
 
@@ -97,20 +94,21 @@ func (m *Market) onMarketTradeUpdate(element *fastjson.Value) {
   symbol := string(element.GetStringBytes("S"))
   t := string(element.GetStringBytes("t"))
   price := element.GetFloat64("p")
-  fmt.Printf("Trade update: %s %s %f\n", symbol, t, price)
-  if asset, ok := m.assets[symbol]; ok {
-    asset.UpdateWindowOnTrade(price, t)
-  } else {
-    // TODO: Handle this error
-  }
+  fmt.Println("Bar update:", symbol)
+  m.assets[symbol].UpdateWindowOnTrade(price, t)
+  m.CheckForSignal(symbol)
 }
 
 
 func (m *Market) messageHandler(message []byte) error {
-  arr, err := m.parser.ParseBytes(message)
+  parser := fastjson.Parser{}
+  arr, err := parser.ParseBytes(message)
   if err != nil {
     push.Error("Error parsing message in market.messageHandler(): ", err)
-    log.Printf("Error message in market.messageHandler(): %s\n  -> message: %s\n", err, string(message))
+    log.Printf(
+      "Error message in market.messageHandler(): %s\n" + 
+      "  -> message: %s\n",
+    err, string(message))
     return errors.New("Error parsing message")
   }
   // Make sure arr is of type array as the API should return a list of messages
@@ -184,11 +182,15 @@ func (m *Market) marketUpdateListen(wg *sync.WaitGroup) {
     if err != nil {
       push.Error("Error reading message: ", err)
       log.Println("Error reading message: ", err)
+      continue
     }
-    if err := m.messageHandler(message); err != nil {
-      push.Error("Error handling message: ", err)
-      log.Println("Error handling message: ", err)
-    }
+    // Handle message in a new goroutine to handle messages concurrently
+    go func(message []byte) {
+      if err := m.messageHandler(message); err != nil {
+        push.Error("Error handling message: ", err)
+        log.Println("Error handling message: ", err)
+      }
+    }(message)
   }
 }
 
@@ -198,7 +200,7 @@ func (m *Market) orderUpdateListen(wg *sync.WaitGroup) {
   defer wg.Done()
   for {
     update := <-m.order_update_chan
-    m.orderUpdateHandler(update)
+    m.orderUpdateHandler(&update)
   }
 }
 
@@ -243,68 +245,65 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset, db_chan
 }
 
 
-func (m *Market) orderUpdateHandler(u OrderUpdate) {
-  var pos *Position = m.assets[u.Symbol].Positions[u.Strat_name]
-  if pos.OpenOrderPendingFlag {
-    if u.PositionQty != nil {
-      pos.PositionQty = u.PositionQty
-    }
-    if u.FilledAvgPrice != nil {
-      pos.OpenFilledAvgPrice = u.FilledAvgPrice
-    }
-    if u.FillTime != nil {
-      pos.OpenFillTime = u.FillTime
-    }
-    if u.event == "fill" || u.event == "canceled" {
-      pos.OpenOrderPendingFlag = false
-      if pos.PositionQty == 0 {
-        delete(m.assets[u.Symbol].Positions, u.Strat_name)
-      } else {
-    }
+func calculatePositionQty(new_asset_qty *decimal.Decimal, pos *Position, asset *Asset, update *OrderUpdate) {
+  var position_change decimal.Decimal = (*new_asset_qty).Sub(asset.AssetQty)
+  pos.Qty = pos.Qty.Add(position_change)
+  asset.AssetQty = *new_asset_qty
+  if !asset.SumPosQtyEqAssetQty() {
+    push.Error("Sum of position qty not equal to asset qty", nil)
+    log.Printf(
+      "[ FATAL ]\tSum of position qty not equal to asset qty\n" +
+      "  -> Asset %d != %d Position\n" +
+      "  -> OrderUpdate: %v+\n" +
+      "  -> Closing all positions and shutting down\n",
+      asset.AssetQty, pos.Qty, update,
+    )
+    order.CloseAllPositions(2, 0)
+    log.Panicln("Shutting down")
   }
 }
 
-        // try:
-        //   if self.assets[symbol].positions[strategy_name].close_order_pending_flag:
-        //     if event in {"partial_fill", "fill", "canceled"}:
-        //       if position_qty is not None:
-        //         self.assets[symbol].positions[strategy_name].position_qty = position_qty
-        //       if filled_avg_price is not None:
-        //         self.assets[symbol].positions[strategy_name].close_filled_avg_price = float(filled_avg_price)
-        //       if fill_time is not None:
-        //         self.assets[symbol].positions[strategy_name].close_fill_time = fill_time
-        //       if event in {"fill", "canceled"}:
-        //         self.assets[symbol].positions[strategy_name].close_order_pending_flag = False
-        //         if self.assets[symbol].positions[strategy_name].position_qty == 0:  # Can technically be negative now if there is an error, which needs to be handled  # noqa
-        //           queries = await self.assets[symbol].positions[strategy_name].log_close()
-        //           if queries is not None:
-        //             for query in queries:
-        //               self.db_queue.put(query)
-        //           del self.assets[symbol].positions[strategy_name]
-        //           total_qty_check(self.assets[symbol], "CLOSE")
-        //     continue
-        // except Exception as e:
-        //   raise Exception(f"Error in Close logic: {e}") from e
-        //
-        // # Open
-        // try:
-        //   if self.assets[symbol].positions[strategy_name].open_order_pending_flag:
-        //     if event in {"partial_fill", "fill", "canceled"}:
-        //       if position_qty is not None:
-        //         self.assets[symbol].positions[strategy_name].position_qty = position_qty
-        //       if filled_avg_price is not None:
-        //         self.assets[symbol].positions[strategy_name].open_filled_avg_price = float(filled_avg_price)
-        //       if fill_time is not None:
-        //         self.assets[symbol].positions[strategy_name].open_fill_time = fill_time
-        //       if event in {"fill", "canceled"}:
-        //         self.assets[symbol].positions[strategy_name].open_order_pending_flag = False
-        //         if self.assets[symbol].positions[strategy_name].position_qty == 0:
-        //           del self.assets[symbol].positions[strategy_name]
-        //         else:
-        //           queries = await self.assets[symbol].positions[strategy_name].log_open()
-        //           if queries is not None:
-        //             for query in queries:
-        //               self.db_queue.put(query)
-        //               total_qty_check(self.assets[symbol], "OPEN")
-        // except Exception as e:
-        //   raise Exception(f"Error in Open logic: {e}") from e
+
+func (m *Market) orderUpdateHandler(u *OrderUpdate) {
+  var asset *Asset = m.assets[*u.Symbol]
+  var pos *Position = asset.Positions[u.StratName]
+  // Update AssetQty
+  if u.AssetQty != nil {
+    calculatePositionQty(u.AssetQty, pos, asset, u)
+  }
+  // Open order logic
+  if pos.OpenOrderPending {
+    if u.FilledAvgPrice != nil {
+      pos.OpenFilledAvgPrice = *u.FilledAvgPrice
+    }
+    if u.FillTime != nil {
+      pos.OpenFillTime = *u.FillTime
+    }
+    if u.Event == "fill" || u.Event == "canceled" {
+      pos.OpenOrderPending = false
+      if pos.Qty.IsZero() {
+        asset.RemovePosition(u.StratName)
+      } else {
+        // TODO: Implement log opening of position
+      }
+    }
+  }
+  // Close order logic
+  if pos.CloseOrderPending {
+    // TODO: What happens in logger if FilledAvgPrice is nil since this was never set?
+    // Same question for the other variables in OrderUpdate
+    if u.FilledAvgPrice != nil {
+      pos.CloseFilledAvgPrice = *u.FilledAvgPrice
+    }
+    if u.FillTime != nil {
+      pos.CloseFillTime = *u.FillTime
+    }
+    if u.Event == "fill" || u.Event == "canceled" {
+      pos.CloseOrderPending = false
+      if pos.Qty.IsZero() {
+        asset.RemovePosition(u.StratName)
+        // Implement log closing of position
+      }
+    }
+  }
+}

@@ -31,7 +31,7 @@ func Run() {
     stock_asset_map := map[string]*Asset{}
     order_update_chan["stock"] = make(chan OrderUpdate, constant.CHANNEL_BUFFER_SIZE)
     for _, symbol := range constant.STOCK_LIST {
-      stock_asset_map[symbol] = NewAsset()
+      stock_asset_map[symbol] = NewAsset("stock", symbol)
     }
     wg.Add(1)
     go NewMarket(
@@ -45,7 +45,7 @@ func Run() {
     crypto_asset_map := make(map[string]*Asset)
     order_update_chan["crypto"] = make(chan OrderUpdate, constant.CHANNEL_BUFFER_SIZE)
     for _, symbol := range constant.CRYPTO_LIST {
-      crypto_asset_map[symbol] = NewAsset()
+      crypto_asset_map[symbol] = NewAsset("crypto", symbol)
     }
     wg.Add(1)
     go NewMarket(

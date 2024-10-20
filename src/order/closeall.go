@@ -12,6 +12,7 @@ import (
 )
 
 
+// TDOD: Also implement a function like this for clearing positions table in database
 func CloseAllPositions(backoff_sec int, retries int) {
   url := "https://paper-api.alpaca.markets/v2/positions?cancel_orders=true"
   req, err := http.NewRequest("DELETE", url, nil)

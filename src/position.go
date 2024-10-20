@@ -5,11 +5,8 @@
 package src
 
 import (
-  // Standard packages
   "time"
-
-  // External packages
-  "github.com/shopspring/decimal" // https://pkg.go.dev/github.com/shopspring/decimal#section-readme
+  "github.com/shopspring/decimal"
 )
 
 type Position struct {
@@ -20,34 +17,37 @@ type Position struct {
   BadForAnalysis        bool
   OrderID               string  // The order id is primarily used to track the order status. It contains the strategy name, which is used to
                                 // identify the strategy that placed the order when getting order updates from the broker.
+  OpenOrderPending      bool
+  OpenTriggerTime       time.Time 
   OpenSide              string
-  OpenOrderPendingFlag  bool
-  OpenOrderSentTime     time.Time
+  OpenOrderSentTime     time.Time 
   OpenOrderType         string
-  OpenTriggerTime       time.Time
   OpenTriggerPrice      float64
-  OpenFillTime          time.Time
-  OpenFilledQty         decimal.Decimal
+  OpenPriceTime         string 
+  OpenFillTime          string
+  OpenFilledQty         decimal.Decimal  // What is this used for? Redundant?
   OpenFilledAvgPrice    float64
-  OpenPriceTime         time.Time
 
-  CloseOrderPendingFlag bool
-  CloseOrderSentTime    time.Time
+  CloseOrderPending     bool
+  CloseOrderSentTime    string
   CloseOrderType        string
-  CloseFilledQty        decimal.Decimal
+  CloseFilledQty        decimal.Decimal  // What is this used for? Redundant?
   CloseTriggerTime      time.Time
   CloseTriggerPrice     float64
-  CloseFillTime         time.Time
+  CloseFillTime         string
   CloseFilledAvgPrice   float64
-  ClosePriceTime        time.Time
+  ClosePriceTime        string
 }
 
 // Constructor for Position
-func NewPosition() *Position {
+func NewPosition(symbol string, price float64) *Position {
   p := &Position{
     BadForAnalysis: false,
-    OpenOrderPendingFlag: false,
-    CloseOrderPendingFlag: false,
+    OpenOrderPending: true,
+    CloseOrderPending: false,
+    OpenTriggerTime: time.Now().UTC(),
+    OpenTriggerPrice: price,
+    OpenPriceTime: time.Now().UTC().Format(time.RFC3339),
   }
   p.Init()
   return p

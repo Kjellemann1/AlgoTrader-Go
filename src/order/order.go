@@ -2,29 +2,53 @@
 package order
 
 import (
-  "strings"
+  "io"
   "log"
   "fmt"
+  "bytes"
+  "strings"
   "net/http"
-  "io"
-  "github.com/shopspring/decimal"
   "github.com/valyala/fastjson"
+  "github.com/shopspring/decimal"
 
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
 )
+
+
+func SendOrder(payload string) error {
+  url := fmt.Sprintf("%s/orders", constant.ENDPOINT)
+  request, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte(payload)))
+  if err != nil {
+    fmt.Println("Error making POST request:", err)
+  }
+  request.Header = constant.AUTH_HEADERS
+  response, err := http.DefaultClient.Do(request)
+  fmt.Println("Order sent")
+  if err != nil {
+    log.Printf(
+      "[ ERROR ]\tMaking POST request failed:" +
+      "  -> Request: %v+\n" +
+      "  -> Response: %v+\n" +
+      "  -> Error: %s\n",
+    request, response, err)
+    return err
+  }
+  defer response.Body.Close()
+  return nil
+}
 
 
 func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
   qty, _ := decimal.NewFromString("0")
   if asset_class == "stock" {
-    qty = decimal.NewFromFloat(constant.ORDER_SIZE_USD / last_price).RoundDown(0)
+    qty = decimal.NewFromFloat(constant.ORDER_AMOUNT_USD / last_price).RoundDown(0)
     if qty.Cmp(decimal.NewFromInt(1)) == -1 {
       qty = decimal.NewFromInt(0)
     }
   } else if asset_class == "crypto" {
-    qty = decimal.NewFromFloat(constant.ORDER_SIZE_USD / last_price).RoundDown(9)  // Alpaca accepts max 9 decimal places
+    qty = decimal.NewFromFloat(constant.ORDER_AMOUNT_USD / last_price).RoundDown(9)  // Alpaca accepts max 9 decimal places
   }
   return qty
 }
