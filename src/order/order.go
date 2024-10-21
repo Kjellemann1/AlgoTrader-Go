@@ -25,7 +25,6 @@ func SendOrder(payload string) error {
   }
   request.Header = constant.AUTH_HEADERS
   response, err := http.DefaultClient.Do(request)
-  fmt.Println("Order sent")
   if err != nil {
     log.Printf(
       "[ ERROR ]\tMaking POST request failed:" +

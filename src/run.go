@@ -9,18 +9,16 @@ import (
 
 var rwmu sync.RWMutex
 
-var NO_NEW_TRADES bool = false
-
 
 func Run() {
-  query_chan := make(chan string, constant.CHANNEL_BUFFER_SIZE)
+  db_chan := make(chan *Query, constant.CHANNEL_BUFFER_SIZE)
   order_update_chan := make(map[string]chan OrderUpdate)
 
   var wg sync.WaitGroup
 
   // Database
   wg.Add(1)
-  go NewDatabase(&wg)
+  go NewDatabase(&wg, db_chan)
 
   // Account
   wg.Add(1)
@@ -36,7 +34,7 @@ func Run() {
     wg.Add(1)
     go NewMarket(
       "stock", "wss://stream.data.alpaca.markets/v2/iex", 
-      stock_asset_map, query_chan, order_update_chan["stock"], &wg,
+      stock_asset_map, db_chan, order_update_chan["stock"], &wg,
     )
   }
 
@@ -50,13 +48,13 @@ func Run() {
     wg.Add(1)
     go NewMarket(
       "crypto", "wss://stream.data.alpaca.markets/v1beta3/crypto/us",
-      crypto_asset_map, query_chan, order_update_chan["crypto"], &wg,
+      crypto_asset_map, db_chan, order_update_chan["crypto"], &wg,
     )
   } 
 
   wg.Wait()
 
-  close(query_chan)
+  close(db_chan)
   close(order_update_chan["stock"])
   close(order_update_chan["crypto"])
 }

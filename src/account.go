@@ -116,7 +116,7 @@ func (a *Account) listen() {
   for {
     _, message, err := a.conn.ReadMessage()
     if err != nil {
-      fmt.Println("Error reading message: ", err)
+      log.Println("Error reading message: ", err)
       panic(err)
     }
     a.messageHandler(message)
@@ -168,8 +168,23 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
   }
   asset_class_str := string(asset_class)
   asset_class_ptr := &asset_class_str
-  // Extract order id. Return if nil
-  order_id := parsed_msg.Get("data").Get("order").GetStringBytes("client_order_id")
+  // Extract symbol, Return if nil
+  var symbol_ptr *string
+  symbol := parsed_msg.Get("data").Get("order").GetStringBytes("symbol")
+  if symbol == nil {
+    push.Error("SYMBOL NOT IN TRADE UPDATE\nSHUTTING DOWN\n", nil)
+    log.Printf(
+      "[ FATAL ]\tSymbol not in trade update\n"+
+      "  -> Closing all positions and shutting down\n" +
+      "  -> Parsed message: %s\n",
+    parsed_msg)
+    order.CloseAllPositions(2, 0)
+    log.Panicln("SHUTTING DOWN")
+  }
+  symbol_str := string(symbol)
+  symbol_ptr = &symbol_str
+  // Extract PositionID. Return if nil
+  order_id := parsed_msg.Get("data").Get("order").GetStringBytes("client_order_id")  // client_order_id == PositionID
   if order_id == nil {
     push.Warning("Order id not found", nil)
     log.Println("[ WARNING ]\tOrder ID not found")
@@ -193,16 +208,9 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
     side_str := string(side)
     side_ptr = &side_str
   }
-  // Extract symbol
-  var symbol_ptr *string
-  symbol := parsed_msg.Get("data").Get("order").GetStringBytes("symbol")
-  if symbol != nil {
-    symbol_str := string(symbol)
-    symbol_ptr = &symbol_str
-  }
   // Extract asset_qty
   var asset_qty_ptr *decimal.Decimal
-  asset_qty := parsed_msg.Get("data").Get("order").GetStringBytes("position_qty")
+  asset_qty := parsed_msg.Get("data").GetStringBytes("position_qty")
   if asset_qty != nil {
     asset_qty_dec, err := decimal.NewFromString(string(asset_qty))
     if err != nil {

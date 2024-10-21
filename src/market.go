@@ -24,7 +24,7 @@ import (
 
 type Market struct {
   asset_class       string
-  db_chan           chan string
+  db_chan           chan *Query
   assets            map[string]*Asset
   order_update_chan chan OrderUpdate
   conn              *websocket.Conn
@@ -68,16 +68,11 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
 }
 
 
-func (m *Market) CheckForSignal(symbol string) {
-  s := Strategy{Asset: m.assets[symbol]}
-  s.CheckForSignal()
-}
-
-
 func (m *Market) onMarketBarUpdate(element *fastjson.Value) {
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
-  m.assets[symbol].UpdateWindowOnBar(
+  asset := m.assets[symbol]
+  asset.UpdateWindowOnBar(
       element.GetFloat64("o"),
       element.GetFloat64("h"),
       element.GetFloat64("l"),
@@ -85,7 +80,7 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value) {
       string(element.GetStringBytes("t")),
     )
   fmt.Println("Bar update:", symbol)
-  m.CheckForSignal(symbol)
+  asset.CheckForSignal()
 }
 
 
@@ -95,8 +90,9 @@ func (m *Market) onMarketTradeUpdate(element *fastjson.Value) {
   t := string(element.GetStringBytes("t"))
   price := element.GetFloat64("p")
   fmt.Println("Bar update:", symbol)
-  m.assets[symbol].UpdateWindowOnTrade(price, t)
-  m.CheckForSignal(symbol)
+  asset := m.assets[symbol]
+  asset.UpdateWindowOnTrade(price, t)
+  asset.CheckForSignal()
 }
 
 
@@ -153,7 +149,7 @@ func (m *Market) connect() {
     }
     m.messageHandler(message)
   }
-  // Subscbribe to symbols
+  // Subscribe to symbols
   var sub_msg_symbols string = ""
   if m.asset_class == "stock" {
     sub_msg_symbols = strings.Join(constant.STOCK_LIST, "\",\"")
@@ -218,7 +214,7 @@ func (m *Market) listen() error {
 
 
 // Constructor
-func NewMarket(asset_class string, url string, assets map[string]*Asset, db_chan chan string, order_update_chan chan OrderUpdate, wg *sync.WaitGroup) {
+func NewMarket(asset_class string, url string, assets map[string]*Asset, db_chan chan *Query, order_update_chan chan OrderUpdate, wg *sync.WaitGroup) {
   defer wg.Done()
   // Check that all symbols are in the assets map
   var symbol_list_ptr *[]string
@@ -245,18 +241,18 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset, db_chan
 }
 
 
-func calculatePositionQty(new_asset_qty *decimal.Decimal, pos *Position, asset *Asset, update *OrderUpdate) {
-  var position_change decimal.Decimal = (*new_asset_qty).Sub(asset.AssetQty)
-  pos.Qty = pos.Qty.Add(position_change)
-  asset.AssetQty = *new_asset_qty
-  if !asset.SumPosQtyEqAssetQty() {
+func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
+  var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
+  p.Qty = p.Qty.Add(position_change)
+  a.AssetQty = *u.AssetQty
+  if !a.SumPosQtyEqAssetQty() {
     push.Error("Sum of position qty not equal to asset qty", nil)
     log.Printf(
       "[ FATAL ]\tSum of position qty not equal to asset qty\n" +
       "  -> Asset %d != %d Position\n" +
       "  -> OrderUpdate: %v+\n" +
       "  -> Closing all positions and shutting down\n",
-      asset.AssetQty, pos.Qty, update,
+      a.AssetQty, p.Qty, u,
     )
     order.CloseAllPositions(2, 0)
     log.Panicln("Shutting down")
@@ -269,7 +265,7 @@ func (m *Market) orderUpdateHandler(u *OrderUpdate) {
   var pos *Position = asset.Positions[u.StratName]
   // Update AssetQty
   if u.AssetQty != nil {
-    calculatePositionQty(u.AssetQty, pos, asset, u)
+    calculatePositionQty(pos, asset, u)
   }
   // Open order logic
   if pos.OpenOrderPending {
@@ -284,7 +280,7 @@ func (m *Market) orderUpdateHandler(u *OrderUpdate) {
       if pos.Qty.IsZero() {
         asset.RemovePosition(u.StratName)
       } else {
-        // TODO: Implement log opening of position
+        m.db_chan <-pos.LogOpen(u.StratName)
       }
     }
   }
@@ -300,9 +296,9 @@ func (m *Market) orderUpdateHandler(u *OrderUpdate) {
     }
     if u.Event == "fill" || u.Event == "canceled" {
       pos.CloseOrderPending = false
+      m.db_chan <-pos.LogClose(u.StratName)
       if pos.Qty.IsZero() {
         asset.RemovePosition(u.StratName)
-        // Implement log closing of position
       }
     }
   }

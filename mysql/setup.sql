@@ -1,14 +1,16 @@
 
+-- Main database used for logging positions and trades from the program
+
 CREATE DATABASE algo;
-CREATE DATABASE algo_test;
 
 USE algo;
 
+
 CREATE TABLE positions (
-  db_key VARCHAR(255) PRIMARY KEY,
-  order_id VARCHAR(255),
   symbol VARCHAR(50),
   asset_class VARCHAR(255),
+  PRIMARY KEY (symbol, asset_class),
+  position_id VARCHAR(255),
   side VARCHAR(50),
   strat_name VARCHAR(255),
   order_type VARCHAR(50),
@@ -23,10 +25,11 @@ CREATE TABLE positions (
   bad_for_analysis BOOL
 );
 
+
 CREATE TABLE trades (
   id INT AUTO_INCREMENT PRIMARY KEY,
   action VARCHAR(50),
-  order_id VARCHAR(255),
+  position_id VARCHAR(255),
   symbol VARCHAR(50),
   asset_class VARCHAR(255),
   side VARCHAR(50),
@@ -41,14 +44,21 @@ CREATE TABLE trades (
   order_sent_time DATETIME(3),
   bad_for_analysis BOOL
 );
+
+
+-- Test database
+-- Equivalent to the above, but used for running tests
+
+CREATE DATABASE algo_test;
 
 USE algo_test;
 
+
 CREATE TABLE positions (
-  db_key VARCHAR(255) PRIMARY KEY,
-  order_id VARCHAR(255),
   symbol VARCHAR(50),
   asset_class VARCHAR(255),
+  PRIMARY KEY (symbol, asset_class),
+  position_id VARCHAR(255),
   side VARCHAR(50),
   strat_name VARCHAR(255),
   order_type VARCHAR(50),
@@ -63,10 +73,11 @@ CREATE TABLE positions (
   bad_for_analysis BOOL
 );
 
+
 CREATE TABLE trades (
   id INT AUTO_INCREMENT PRIMARY KEY,
   action VARCHAR(50),
-  order_id VARCHAR(255),
+  position_id VARCHAR(255),
   symbol VARCHAR(50),
   asset_class VARCHAR(255),
   side VARCHAR(50),
