@@ -59,7 +59,8 @@ type OrderUpdate struct {
 type Account struct {
   conn *websocket.Conn
   parser fastjson.Parser
-  orderupdate_chan map[string]chan *OrderUpdate
+  db_chan chan *Query
+  assets map[string]map[string]*Asset
   // TODO stock and crypto cleared for shutdown
 }
 
@@ -106,7 +107,12 @@ func (a *Account) messageHandler(message []byte) {
     case "authorization":
       a.onAuth(parsed_msg)
     case "trade_updates":
-      a.onTradeUpdate(parsed_msg)
+      update := a.updateParser(parsed_msg)
+      if update == nil {
+        return
+      }
+      a.orderUpdateHandler(update)
+
     case "listening":
       log.Println("[ OK ]\tListening to order updates")
   }
@@ -115,8 +121,21 @@ func (a *Account) messageHandler(message []byte) {
 
 func (a *Account) listen() {
   for {
+    /*
+      TODO: Might want to spawn a new goroutine for each order update. But needs
+      each routine needs to be unique to the position, as the chronology of the
+      order updates are important.
+
+      However, handling order updates might not be important for performance. 
+      What is important is the process from receiving the price to sending the order. 
+      What comes after that, unless trading at a really high frequency, is not really 
+      important as long as it doesnt block the other stuff. That has its own go routine. 
+      And spawnind more goroutines for these order updates might actually steal resources
+      from the more important stuff.
+    */
     _, message, err := a.conn.ReadMessage()
     if err != nil {
+      // TODO: Better error handling
       log.Println("Error reading message: ", err)
       panic(err)
     }
@@ -125,18 +144,88 @@ func (a *Account) listen() {
 }
 
 
-func NewAccount(order_update_chan map[string] chan *OrderUpdate, wg *sync.WaitGroup) {
+func NewAccount(wg *sync.WaitGroup, assets map[string]map[string]*Asset, db_chan chan *Query) {
   defer wg.Done()
   a := &Account{
     parser: fastjson.Parser{},
-    orderupdate_chan: order_update_chan,
+    assets: assets,
+    db_chan: db_chan,
   }
   a.connect()
   a.listen()
 }
 
 
-func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
+func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
+  var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
+  p.Qty = p.Qty.Add(position_change)
+  a.AssetQty = *u.AssetQty
+  if !a.SumPosQtyEqAssetQty() {
+    push.Error("Sum of position qty not equal to asset qty", nil)
+    log.Printf(
+      "[ FATAL ]\tSum of position qty not equal to asset qty\n" +
+      "  -> Asset %d != %d Position\n" +
+      "  -> OrderUpdate: %v+\n" +
+      "  -> Closing all positions and shutting down\n",
+      a.AssetQty, p.Qty, u,
+    )
+    order.CloseAllPositions(2, 0)
+    log.Fatal("Shutting down")
+  }
+}
+
+
+// TODO: Why on earth am I doing this here? This should happen in the Account instance.
+// Then it wouldn't be necessary to send the order update to the Market instance.
+func (a *Account) orderUpdateHandler(u *OrderUpdate) {
+  var asset = a.assets[u.AssetClass][*u.Symbol]
+  var pos *Position = asset.Positions[u.StratName]
+  asset.mutex.Lock()
+  defer asset.mutex.Unlock()
+  // Update AssetQty
+  if u.AssetQty != nil {
+    calculatePositionQty(pos, asset, u)
+  }
+  if pos == nil {
+    log.Panicf("Position nil: %s", *u.Symbol)
+  }
+  // Open order logic
+  if pos.OpenOrderPending {
+    if u.FilledAvgPrice != nil {
+      pos.OpenFilledAvgPrice = *u.FilledAvgPrice
+    }
+    if u.FillTime != nil {
+      pos.OpenFillTime = *u.FillTime
+    }
+    if u.Event == "fill" || u.Event == "canceled" {
+      pos.OpenOrderPending = false
+      if pos.Qty.IsZero() {
+        asset.RemovePosition(u.StratName)
+      } else {
+        a.db_chan <-pos.LogOpen(u.StratName)
+      }
+    }
+  }
+  // Close order logic
+  if pos.CloseOrderPending {
+    if u.FilledAvgPrice != nil {
+      pos.CloseFilledAvgPrice = *u.FilledAvgPrice
+    }
+    if u.FillTime != nil {
+      pos.CloseFillTime = *u.FillTime
+    }
+    if u.Event == "fill" || u.Event == "canceled" {
+      pos.CloseOrderPending = false
+      a.db_chan <-pos.LogClose(u.StratName)
+      if pos.Qty.IsZero() {
+        asset.RemovePosition(u.StratName)
+      }
+    }
+  }
+}
+
+
+func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
   // Extract event. Shutdown if nil
   event := parsed_msg.Get("data").GetStringBytes("event")
   if event == nil {
@@ -153,7 +242,7 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
   // Only handle fill, partial_fill and canceled events.
   // Other events are likely not relevant. https://alpaca.markets/docs/api-documentation/api-v2/streaming/
   if event_str != "fill" && event_str != "partial_fill" && event_str != "canceled" {
-    return
+    return nil
   }
   // Extract asset class. Shutdown if nil
   asset_class := parsed_msg.Get("data").Get("order").GetStringBytes("asset_class")
@@ -168,7 +257,6 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
     log.Panicln("SHUTTING DOWN")
   }
   asset_class_str := string(asset_class)
-  asset_class_ptr := &asset_class_str
   // Extract symbol, Return if nil
   var symbol_ptr *string
   symbol := parsed_msg.Get("data").Get("order").GetStringBytes("symbol")
@@ -189,18 +277,18 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
   if order_id == nil {
     push.Warning("Order id not found", nil)
     log.Println("[ WARNING ]\tOrder ID not found")
-    return
+    return nil
   }
   order_id_str := string(order_id)
   // Grep strat_name from order id. Return if nil
   strat_name, err := grepStratName(order_id_str)
   if err != nil {
-    return
+    return nil
   }
   // Grep action from order_id. Return if nil
   action, err := grepAction(order_id_str)
   if err != nil {
-    return
+    return nil
   }
   // Extract side
   var side_ptr *string
@@ -242,18 +330,8 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
     filled_avg_price_ptr = &filled_avg_price_float
   }
 
-  // fmt.Println("Event: ", event_str)
-  // fmt.Println("Asset class: ", asset_class_str)
-  // fmt.Println("Strat name: ", strat_name)
-  // fmt.Println("Action: ", action)
-  // fmt.Println("Side: ", side_ptr)
-  // fmt.Println("Symbol: ", symbol_ptr)
-  // fmt.Println("Asset qty: ", asset_qty_ptr)
-  // fmt.Println("Fill time: ", fill_time_ptr)
-  // fmt.Println("Filled avg price: ", filled_avg_price_ptr)
-
   // Send update to Market instance
-  a.orderupdate_chan[*asset_class_ptr] <- &OrderUpdate {
+  return &OrderUpdate {
     Event:            event_str,
     AssetClass:       asset_class_str,
     StratName:        strat_name,

@@ -15,19 +15,15 @@ import (
   "strings"
   "github.com/valyala/fastjson"
   "github.com/gorilla/websocket"
-  "github.com/shopspring/decimal"
 
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
 )
 
 
 type Market struct {
   asset_class       string
-  db_chan           chan *Query
   assets            map[string]*Asset
-  order_update_chan chan *OrderUpdate
   conn              *websocket.Conn
   url               string
 }
@@ -172,8 +168,9 @@ func (m *Market) connect() {
 
 
 // Listens for market updates from the websocket connection
-func (m *Market) marketUpdateListen(wg *sync.WaitGroup) {
-  defer wg.Done()
+func (m *Market) listen() {
+  wg := sync.WaitGroup{}
+  defer wg.Wait()
   for {
     _, message, err := m.conn.ReadMessage()
     if err != nil {
@@ -182,52 +179,19 @@ func (m *Market) marketUpdateListen(wg *sync.WaitGroup) {
       continue
     }
     // Handle message in a new goroutine to handle messages concurrently
-    go func(message []byte) {
+    wg.Add(1)
+    go func(message []byte, wg *sync.WaitGroup) {
       if err := m.messageHandler(message); err != nil {
         push.Error("Error handling message: ", err)
         log.Println("Error handling message: ", err)
       }
-    }(message)
+    }(message, &wg)
   }
-}
-
-
-// Listen for order updates form the Account instance
-func (m *Market) orderUpdateListen(wg *sync.WaitGroup) {
-  /*
-    TODO: Might want to spawn a new goroutine for each order update. But needs
-    each routine needs to be unique to the position, as the chronology of the
-    order updates are important.
-
-    However, handling order updates might not be important for performance. 
-    What is important is the process from receiving the price to sending the order. 
-    What comes after that, unless trading at a really high frequency, is not really 
-    important as long as it doesnt block the other stuff. That has its own go routine. 
-    And spawnind more goroutines for these order updates might actually steal resources
-    from the more important stuff.
-  */
-  defer wg.Done()
-  for {
-    update := <-m.order_update_chan
-    m.orderUpdateHandler(update)
-  }
-}
-
-
-// Main listen function
-func (m *Market) listen() error {
-  wg := sync.WaitGroup{}
-  wg.Add(1)
-  go m.marketUpdateListen(&wg)
-  wg.Add(1)
-  go m.orderUpdateListen(&wg)
-  wg.Wait()
-  return nil
 }
 
 
 // Constructor
-func NewMarket(asset_class string, url string, assets map[string]*Asset, db_chan chan *Query, order_update_chan chan *OrderUpdate, wg *sync.WaitGroup) {
+func NewMarket(asset_class string, url string, assets map[string]*Asset, wg *sync.WaitGroup) {
   defer wg.Done()
   // Check that all symbols are in the assets map
   var symbol_list_ptr *[]string
@@ -238,86 +202,15 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset, db_chan
   }
   for _, symbol := range *symbol_list_ptr {
     if _, ok := assets[symbol]; !ok {
-      log.Panicln("Symbol not found in assets map: ", symbol)
+      log.Fatal("Symbol not found in assets map: ", symbol)
     }
   }
   // Initialize Market instance
-  m := Market{
+  m := &Market{
     asset_class: asset_class,
-    assets: assets,
-    db_chan: db_chan,
-    order_update_chan: order_update_chan,
     url: url,
+    assets: assets,
   }
   m.connect()
   m.listen()
-}
-
-
-func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
-  var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
-  p.Qty = p.Qty.Add(position_change)
-  a.AssetQty = *u.AssetQty
-  if !a.SumPosQtyEqAssetQty() {
-    push.Error("Sum of position qty not equal to asset qty", nil)
-    log.Printf(
-      "[ FATAL ]\tSum of position qty not equal to asset qty\n" +
-      "  -> Asset %d != %d Position\n" +
-      "  -> OrderUpdate: %v+\n" +
-      "  -> Closing all positions and shutting down\n",
-      a.AssetQty, p.Qty, u,
-    )
-    order.CloseAllPositions(2, 0)
-    log.Fatal("Shutting down")
-  }
-}
-
-
-func (m *Market) orderUpdateHandler(u *OrderUpdate) {
-  m.assets[*u.Symbol].mutex.Lock()
-  defer m.assets[*u.Symbol].mutex.Unlock()
-  var asset *Asset = m.assets[*u.Symbol]
-  var pos *Position = asset.Positions[u.StratName]
-  // Update AssetQty
-  if u.AssetQty != nil {
-    calculatePositionQty(pos, asset, u)
-  }
-  if pos == nil {
-    log.Panicf("Position nil: %s", *u.Symbol)
-  }
-  // Open order logic
-  if pos.OpenOrderPending {
-    if u.FilledAvgPrice != nil {
-      pos.OpenFilledAvgPrice = *u.FilledAvgPrice
-    }
-    if u.FillTime != nil {
-      pos.OpenFillTime = *u.FillTime
-    }
-    if u.Event == "fill" || u.Event == "canceled" {
-      pos.OpenOrderPending = false
-      if pos.Qty.IsZero() {
-        asset.RemovePosition(u.StratName)
-      } else {
-        m.db_chan <-pos.LogOpen(u.StratName)
-      }
-    }
-  }
-  // Close order logic
-  if pos.CloseOrderPending {
-    // TODO: What happens in logger if FilledAvgPrice is nil since this was never set?
-    // Same question for the other variables in OrderUpdate
-    if u.FilledAvgPrice != nil {
-      pos.CloseFilledAvgPrice = *u.FilledAvgPrice
-    }
-    if u.FillTime != nil {
-      pos.CloseFillTime = *u.FillTime
-    }
-    if u.Event == "fill" || u.Event == "canceled" {
-      pos.CloseOrderPending = false
-      m.db_chan <-pos.LogClose(u.StratName)
-      if pos.Qty.IsZero() {
-        asset.RemovePosition(u.StratName)
-      }
-    }
-  }
 }

@@ -12,7 +12,20 @@ var rwmu sync.RWMutex
 
 func Run() {
   db_chan := make(chan *Query, constant.CHANNEL_BUFFER_SIZE)
-  order_update_chan := make(map[string]chan *OrderUpdate)
+
+  assets := make(map[string]map[string]*Asset)
+  if len(constant.STOCK_LIST) > 0 {
+    assets["stock"] = make(map[string]*Asset)
+    for _, symbol := range constant.STOCK_LIST {
+      assets["stock"][symbol] = NewAsset("stock", symbol)
+    }
+  }
+  if len(constant.CRYPTO_LIST) > 0 {
+    assets["crypto"] = make(map[string]*Asset)
+    for _, symbol := range constant.CRYPTO_LIST {
+      assets["crypto"][symbol] = NewAsset("crypto", symbol)
+    }
+  }
 
   var wg sync.WaitGroup
 
@@ -22,39 +35,26 @@ func Run() {
 
   // Account)
   wg.Add(1)
-  go NewAccount(order_update_chan, &wg)
+  go NewAccount(&wg, assets, db_chan)
 
-  // Stocks
-  if len(constant.STOCK_LIST) > 0 {
-    stock_asset_map := map[string]*Asset{}
-    order_update_chan["stock"] = make(chan *OrderUpdate, constant.CHANNEL_BUFFER_SIZE)
-    for _, symbol := range constant.STOCK_LIST {
-      stock_asset_map[symbol] = NewAsset("stock", symbol)
-    }
+  // Stock
+  if _, ok := assets["stock"]; ok {
     wg.Add(1)
     go NewMarket(
       "stock", "wss://stream.data.alpaca.markets/v2/iex", 
-      stock_asset_map, db_chan, order_update_chan["stock"], &wg,
+      assets["stock"], &wg,
     )
   }
 
   // Crypto
-  if len(constant.CRYPTO_LIST) > 0 {
-    crypto_asset_map := make(map[string]*Asset)
-    order_update_chan["crypto"] = make(chan *OrderUpdate, constant.CHANNEL_BUFFER_SIZE)
-    for _, symbol := range constant.CRYPTO_LIST {
-      crypto_asset_map[symbol] = NewAsset("crypto", symbol)
-    }
+  if _, ok := assets["crypto"]; ok {
     wg.Add(1)
     go NewMarket(
       "crypto", "wss://stream.data.alpaca.markets/v1beta3/crypto/us",
-      crypto_asset_map, db_chan, order_update_chan["crypto"], &wg,
+      assets["crypto"], &wg,
     )
   } 
 
   wg.Wait()
-
   close(db_chan)
-  close(order_update_chan["stock"])
-  close(order_update_chan["crypto"])
 }
