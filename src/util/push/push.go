@@ -59,17 +59,17 @@ func Info(message string) {
 }
 
 
-func Message(message string) {
-  push(message, "MESSAGE", 0)
+func Message(message string) {  // Change to 0
+  push(message, "MESSAGE", -1)
 }
 
 
 func Warning(message string, err error) {
   if err != nil {
     x := fmt.Sprintf("%s\n  -> Error: %s", message, err.Error())
-    push(x, "WARNING", 1)
+    push(x, "WARNING", -1)  // Change to 1
   } else {
-    push(message, "WARNING", 1)
+    push(message, "WARNING", -1)  // Change to 1
   }
 }
 
@@ -77,8 +77,8 @@ func Warning(message string, err error) {
 func Error(message string, err error) {
   if err != nil {
     x := fmt.Sprintf("%s\n  -> Error: %s", message, err.Error())
-    push(x, "ERROR", 2)
+    push(x, "ERROR", -1)  // Change to 2
   } else {
-    push(message, "ERROR", 2)
+    push(message, "ERROR", -1)  // Change to 2
   }
 }

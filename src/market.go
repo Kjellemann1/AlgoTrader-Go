@@ -11,6 +11,7 @@ import (
   "errors"
   "fmt"
   "slices"
+  "time"
   "strings"
   "github.com/valyala/fastjson"
   "github.com/gorilla/websocket"
@@ -26,7 +27,7 @@ type Market struct {
   asset_class       string
   db_chan           chan *Query
   assets            map[string]*Asset
-  order_update_chan chan OrderUpdate
+  order_update_chan chan *OrderUpdate
   conn              *websocket.Conn
   url               string
 }
@@ -72,14 +73,15 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value) {
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
   asset := m.assets[symbol]
+  t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
+  t = t.Add(1 * time.Minute)
   asset.UpdateWindowOnBar(
       element.GetFloat64("o"),
       element.GetFloat64("h"),
       element.GetFloat64("l"),
       element.GetFloat64("c"),
-      string(element.GetStringBytes("t")),
+      t,
     )
-  fmt.Println("Bar update:", symbol)
   asset.CheckForSignal()
 }
 
@@ -87,9 +89,8 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value) {
 func (m *Market) onMarketTradeUpdate(element *fastjson.Value) {
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
-  t := string(element.GetStringBytes("t"))
+  t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   price := element.GetFloat64("p")
-  fmt.Println("Bar update:", symbol)
   asset := m.assets[symbol]
   asset.UpdateWindowOnTrade(price, t)
   asset.CheckForSignal()
@@ -193,10 +194,22 @@ func (m *Market) marketUpdateListen(wg *sync.WaitGroup) {
 
 // Listen for order updates form the Account instance
 func (m *Market) orderUpdateListen(wg *sync.WaitGroup) {
+  /*
+    TODO: Might want to spawn a new goroutine for each order update. But needs
+    each routine needs to be unique to the position, as the chronology of the
+    order updates are important.
+
+    However, handling order updates might not be important for performance. 
+    What is important is the process from receiving the price to sending the order. 
+    What comes after that, unless trading at a really high frequency, is not really 
+    important as long as it doesnt block the other stuff. That has its own go routine. 
+    And spawnind more goroutines for these order updates might actually steal resources
+    from the more important stuff.
+  */
   defer wg.Done()
   for {
     update := <-m.order_update_chan
-    m.orderUpdateHandler(&update)
+    m.orderUpdateHandler(update)
   }
 }
 
@@ -214,7 +227,7 @@ func (m *Market) listen() error {
 
 
 // Constructor
-func NewMarket(asset_class string, url string, assets map[string]*Asset, db_chan chan *Query, order_update_chan chan OrderUpdate, wg *sync.WaitGroup) {
+func NewMarket(asset_class string, url string, assets map[string]*Asset, db_chan chan *Query, order_update_chan chan *OrderUpdate, wg *sync.WaitGroup) {
   defer wg.Done()
   // Check that all symbols are in the assets map
   var symbol_list_ptr *[]string
@@ -255,17 +268,22 @@ func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
       a.AssetQty, p.Qty, u,
     )
     order.CloseAllPositions(2, 0)
-    log.Panicln("Shutting down")
+    log.Fatal("Shutting down")
   }
 }
 
 
 func (m *Market) orderUpdateHandler(u *OrderUpdate) {
+  m.assets[*u.Symbol].mutex.Lock()
+  defer m.assets[*u.Symbol].mutex.Unlock()
   var asset *Asset = m.assets[*u.Symbol]
   var pos *Position = asset.Positions[u.StratName]
   // Update AssetQty
   if u.AssetQty != nil {
     calculatePositionQty(pos, asset, u)
+  }
+  if pos == nil {
+    log.Panicf("Position nil: %s", *u.Symbol)
   }
   // Open order logic
   if pos.OpenOrderPending {

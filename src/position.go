@@ -6,6 +6,7 @@ package src
 
 import (
   "time"
+  "log"
   "github.com/shopspring/decimal"
 )
 
@@ -25,30 +26,30 @@ type Position struct {
   OpenOrderSentTime     time.Time 
   OpenOrderType         string
   OpenTriggerPrice      float64
-  OpenPriceTime         string
-  OpenFillTime          string
-  OpenFilledQty         decimal.Decimal  // What is this used for? Redundant?
+  OpenPriceTime         time.Time
+  OpenFillTime          time.Time
   OpenFilledAvgPrice    float64
 
   CloseOrderPending     bool
   CloseOrderSentTime    time.Time
   CloseOrderType        string
-  CloseFilledQty        decimal.Decimal  // What is this used for? Redundant?
+  CloseFilledQty        decimal.Decimal  // What is this used for? Redundant? Might be for partial closing of positions
   CloseTriggerTime      time.Time
   CloseTriggerPrice     float64
-  CloseFillTime         string
+  CloseFillTime         time.Time
   CloseFilledAvgPrice   float64
-  ClosePriceTime        string
+  ClosePriceTime        time.Time
 }
 
 
 // Constructor for Position
 func NewPosition(symbol string, price float64) *Position {
+  trigger_time := time.Now().UTC()
   p := &Position{
     BadForAnalysis: false,
     OpenOrderPending: true,
     CloseOrderPending: false,
-    OpenTriggerTime: time.Now().UTC(),
+    OpenTriggerTime: trigger_time,
     OpenTriggerPrice: price,
   }
   return p
@@ -56,6 +57,7 @@ func NewPosition(symbol string, price float64) *Position {
 
 func (p *Position) LogOpen(strat_name string) *Query {
   // TODO: Allocate on heap or stack?
+  log.Printf("OPEN\t%s\t%s\n", p.Symbol, strat_name)
   query := &Query{
     Action: "open",
     PositionID: p.PositionID,
@@ -65,10 +67,10 @@ func (p *Position) LogOpen(strat_name string) *Query {
     StratName: p.StratName,
     OrderType: p.OpenOrderType,
     Qty: p.Qty,
-    PriceTimeString: p.OpenPriceTime,
+    PriceTime: p.OpenPriceTime,
     TriggerTime: p.OpenTriggerTime,
     TriggerPrice: p.OpenTriggerPrice,
-    FillTimeString: p.OpenFillTime,
+    FillTime: p.OpenFillTime,
     FilledAvgPrice: p.OpenFilledAvgPrice,
     OrderSentTime: p.OpenOrderSentTime,
     BadForAnalysis: p.BadForAnalysis,
@@ -95,10 +97,10 @@ func (p *Position) LogClose(strat_name string) *Query {
     StratName: p.StratName,
     OrderType: p.CloseOrderType,
     Qty: p.Qty,
-    PriceTimeString: p.ClosePriceTime,
+    PriceTime: p.ClosePriceTime,
     TriggerTime: p.CloseTriggerTime,
     TriggerPrice: p.CloseTriggerPrice,
-    FillTimeString: p.CloseFillTime,
+    FillTime: p.CloseFillTime,
     FilledAvgPrice: p.CloseFilledAvgPrice,
     OrderSentTime: p.CloseOrderSentTime,
     BadForAnalysis: p.BadForAnalysis,

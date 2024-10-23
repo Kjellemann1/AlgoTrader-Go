@@ -29,6 +29,8 @@ func grepStratName(orderID string) (string, error) {
 }
 
 
+var update_count int = 0
+
 func grepAction(orderID string) (string, error) {
   pattern := `action\[(.*?)\]`
   re := regexp.MustCompile(pattern)
@@ -253,6 +255,13 @@ func (a *Account) onTradeUpdate(parsed_msg *fastjson.Value) {
   // fmt.Println("Filled avg price: ", filled_avg_price_ptr)
 
   // Send update to Market instance
+  update_count++
+  log.Printf(
+    "Symbol %s\n" +
+    "  -> Position ID %s\n" +
+    "  -> Event: %s\n" +
+    "  -> UpdateNr: %d\n",
+  *symbol_ptr, order_id_str, event_str, update_count)
   a.orderupdate_chan[*asset_class_ptr] <- &OrderUpdate {
     Event:            event_str,
     AssetClass:       asset_class_str,

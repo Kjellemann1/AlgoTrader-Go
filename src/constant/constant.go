@@ -4,12 +4,17 @@ package constant
 import "net/http"
 
 
+const WINDOW_SIZE int = 500
+
 const CHANNEL_BUFFER_SIZE int = 50
 const ORDER_AMOUNT_USD float64 = 500
+
 const ENDPOINT = "https://paper-api.alpaca.markets/v2"
+
 var AUTH_HEADERS http.Header
 var KEY string
 var SECRET string
+
 var PUSH_TOKEN string
 var PUSH_USER string
 

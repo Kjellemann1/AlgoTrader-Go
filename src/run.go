@@ -12,7 +12,7 @@ var rwmu sync.RWMutex
 
 func Run() {
   db_chan := make(chan *Query, constant.CHANNEL_BUFFER_SIZE)
-  order_update_chan := make(map[string]chan OrderUpdate)
+  order_update_chan := make(map[string]chan *OrderUpdate)
 
   var wg sync.WaitGroup
 
@@ -20,14 +20,14 @@ func Run() {
   wg.Add(1)
   go NewDatabase(&wg, db_chan)
 
-  // Account
+  // Account)
   wg.Add(1)
   go NewAccount(order_update_chan, &wg)
 
   // Stocks
   if len(constant.STOCK_LIST) > 0 {
     stock_asset_map := map[string]*Asset{}
-    order_update_chan["stock"] = make(chan OrderUpdate, constant.CHANNEL_BUFFER_SIZE)
+    order_update_chan["stock"] = make(chan *OrderUpdate, constant.CHANNEL_BUFFER_SIZE)
     for _, symbol := range constant.STOCK_LIST {
       stock_asset_map[symbol] = NewAsset("stock", symbol)
     }
@@ -41,7 +41,7 @@ func Run() {
   // Crypto
   if len(constant.CRYPTO_LIST) > 0 {
     crypto_asset_map := make(map[string]*Asset)
-    order_update_chan["crypto"] = make(chan OrderUpdate, constant.CHANNEL_BUFFER_SIZE)
+    order_update_chan["crypto"] = make(chan *OrderUpdate, constant.CHANNEL_BUFFER_SIZE)
     for _, symbol := range constant.CRYPTO_LIST {
       crypto_asset_map[symbol] = NewAsset("crypto", symbol)
     }

@@ -25,11 +25,9 @@ type Query struct {
   StratName         string
   OrderType         string
   Qty               decimal.Decimal  // Stored as a string to avoid floating point errors
-  PriceTimeString   string
   PriceTime         time.Time
   TriggerTime       time.Time
   TriggerPrice      float64
-  FillTimeString    string
   FillTime          time.Time
   FilledAvgPrice    float64
   OrderSentTime     time.Time
@@ -133,13 +131,19 @@ func (db *Database) errorHandler(
   if retries == 0 {
     push.Warning("Failed to execute query", err)
     log.Printf(
-      "[ WARNING ]\t%s failed\n  -> Retries: %d\n  -> Error: %s\n  -> Response: %s\n",
-      func_name, retries, err.Error(), response,
+      "[ WARNING ]\t%s failed\n" +
+      "  -> Retries: %d\n" +
+      "  -> Query: %v\n" +
+      "  -> Error: %s\n" +
+      "  -> Response: %s\n",
+      func_name, retries, *query, err.Error(), response,
     )
   } else {
     push.Error("Failed to execute query on retry", err)
     log.Printf(
-      "[ ERROR ]\t%s failed\n  -> Retries: %d\n  -> Error: %s\n",
+      "[ ERROR ]\t%s failed\n" +
+      "  -> Retries: %d\n" +
+      "  -> Error: %s\n",
       func_name, retries, err.Error(),
     )
   }
@@ -266,21 +270,12 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
 }
 
 
-func convertStringsToTime(query *Query) {
-  // TODO: Might want to handle errors here
-  query.PriceTime, _ = time.Parse(time.RFC3339, query.PriceTimeString)
-  query.FillTime, _ = time.Parse(time.RFC3339, query.FillTimeString)
-}
-
-
 func (db *Database) listen() {
   for {
     query := <-db.db_chan
-    convertStringsToTime(query)
     db.queryHandler(query, 0, 0)
   }
 }
-// TODO: Might want to handle errors here
 
 
 func (db *Database) connect() {

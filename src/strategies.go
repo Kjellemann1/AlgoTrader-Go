@@ -1,10 +1,18 @@
 
 package src
 
-var OpenCount int = 0
+import (
+  "github.com/Kjellemann1/AlgoTrader-Go/src/indicator"
+)
+
 func (a *Asset) testingStrategy() {
-  if OpenCount < 2 {
-    a.OpenPosition("long", "IOC", "test")
+  a.OpenPosition("long", "IOC", "test")
+}
+
+// TODO: This strat does not work until filling of windows with historical data at start is implemented
+func (a *Asset) testingStrategy2() {
+  rsi := indicator.RSI(a.Close, 14)
+  if rsi[len(rsi)-1] > 70 {
+    // a.ClosePosition("long", "IOC", "test_RSI")
   }
-  OpenCount++
 }
