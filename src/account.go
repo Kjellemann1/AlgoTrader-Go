@@ -175,56 +175,6 @@ func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
 }
 
 
-// TODO: Why on earth am I doing this here? This should happen in the Account instance.
-// Then it wouldn't be necessary to send the order update to the Market instance.
-func (a *Account) orderUpdateHandler(u *OrderUpdate) {
-  var asset = a.assets[u.AssetClass][*u.Symbol]
-  var pos *Position = asset.Positions[u.StratName]
-  asset.mutex.Lock()
-  defer asset.mutex.Unlock()
-  // Update AssetQty
-  if u.AssetQty != nil {
-    calculatePositionQty(pos, asset, u)
-  }
-  if pos == nil {
-    log.Panicf("Position nil: %s", *u.Symbol)
-  }
-  // Open order logic
-  if pos.OpenOrderPending {
-    if u.FilledAvgPrice != nil {
-      pos.OpenFilledAvgPrice = *u.FilledAvgPrice
-    }
-    if u.FillTime != nil {
-      pos.OpenFillTime = *u.FillTime
-    }
-    if u.Event == "fill" || u.Event == "canceled" {
-      pos.OpenOrderPending = false
-      if pos.Qty.IsZero() {
-        asset.RemovePosition(u.StratName)
-      } else {
-        a.db_chan <-pos.LogOpen(u.StratName)
-      }
-    }
-  }
-  // Close order logic
-  if pos.CloseOrderPending {
-    if u.FilledAvgPrice != nil {
-      pos.CloseFilledAvgPrice = *u.FilledAvgPrice
-    }
-    if u.FillTime != nil {
-      pos.CloseFillTime = *u.FillTime
-    }
-    if u.Event == "fill" || u.Event == "canceled" {
-      pos.CloseOrderPending = false
-      a.db_chan <-pos.LogClose(u.StratName)
-      if pos.Qty.IsZero() {
-        asset.RemovePosition(u.StratName)
-      }
-    }
-  }
-}
-
-
 func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
   // Extract event. Shutdown if nil
   event := parsed_msg.Get("data").GetStringBytes("event")
@@ -330,6 +280,7 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
     filled_avg_price_ptr = &filled_avg_price_float
   }
 
+
   // Send update to Market instance
   return &OrderUpdate {
     Event:            event_str,
@@ -343,3 +294,55 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
     FilledAvgPrice:   filled_avg_price_ptr,
   }
 }
+
+
+func (a *Account) orderUpdateHandler(u *OrderUpdate) {
+  var asset = a.assets[u.AssetClass][*u.Symbol]
+  var pos *Position = asset.Positions[u.StratName]
+  asset.mutex.Lock()
+  defer asset.mutex.Unlock()
+  // Update AssetQty
+  if u.AssetQty != nil {
+    calculatePositionQty(pos, asset, u)
+  }
+  if pos == nil {
+    log.Panicf("Position nil: %s", *u.Symbol)
+  }
+  // Open order logic
+  if pos.OpenOrderPending {
+    if u.FilledAvgPrice != nil {
+      pos.OpenFilledAvgPrice = *u.FilledAvgPrice
+    }
+    if u.FillTime != nil {
+      pos.OpenFillTime = *u.FillTime
+    }
+    if u.Event == "fill" || u.Event == "canceled" {
+      if pos.Qty.IsZero() {
+        asset.RemovePosition(u.StratName)
+      } else {
+        a.db_chan <-pos.LogOpen(u.StratName)
+      }
+      pos.OpenOrderPending = false
+    }
+  }
+  // Close order logic
+  if pos.CloseOrderPending {
+    fmt.Println("Account 330")
+    if u.FilledAvgPrice != nil {
+      pos.CloseFilledAvgPrice = *u.FilledAvgPrice
+    }
+    if u.FillTime != nil {
+      pos.CloseFillTime = *u.FillTime
+    }
+    if u.Event == "fill" || u.Event == "canceled" {
+      fmt.Println("Account 338")
+      a.db_chan <-pos.LogClose(u.StratName)
+      if pos.Qty.IsZero() {
+        asset.RemovePosition(u.StratName)
+      }
+      pos.CloseOrderPending = false
+    }
+  }
+}
+
+

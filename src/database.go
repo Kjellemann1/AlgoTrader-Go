@@ -164,7 +164,7 @@ func (db *Database) errorHandler(
       db.errorHandler(err, func_name, response, query, retries + 1, backoff_sec)
     } else {
       push.Error("MAX RETRIES REACHED.\nCLOSING ALL POSITIONS AND SHUTTING DOWN.", err)
-      log.Printf("[ ERROR ]\tMAX RETRIES REACHED.\nCLOSING ALL POSITIONS AND SHUTTING DOWN.\n")
+      log.Printf("[ ERROR ]\tMAX RETRIES REACHED.\n  -> CLOSING ALL POSITIONS AND SHUTTING DOWN.\n")
       order.CloseAllPositions(2, 0)
       // TODO: Think this should be log.Fatal
       log.Panicln("SHUTTING DOWN")
@@ -173,7 +173,7 @@ func (db *Database) errorHandler(
   // If connection is successful, try to execute the query again
   if retries > 3 {
     push.Error("MAX RETRIES REACHED.\nCLOSING ALL POSITIONS AND SHUTTING DOWN.", err)
-    log.Printf("[ ERROR ]\tMAX RETRIES REACHED.\nCLOSING ALL POSITIONS AND SHUTTING DOWN.\n")
+    log.Printf("[ ERROR ]\tMAX RETRIES REACHED.\n  -> CLOSING ALL POSITIONS AND SHUTTING DOWN.\n")
     order.CloseAllPositions(2, 0)
     // TODO: Think this should be log.Fatal
     log.Panicln("SHUTTING DOWN")
@@ -258,7 +258,7 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
       db.insertTrade(query, backoff_sec, retries)
       db.insertPosition(query, backoff_sec, retries)
     case "close":
-      db.insertPosition(query, backoff_sec, retries)
+      db.insertTrade(query, backoff_sec, retries)
       db.deletePosition(query, backoff_sec, retries)
     case "update":
       db.updateTrailingStop(query, backoff_sec, retries)

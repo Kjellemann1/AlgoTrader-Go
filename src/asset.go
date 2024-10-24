@@ -170,7 +170,6 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   pos.AssetClass = a.AssetClass
   pos.StratName = strat_name
   pos.Qty, _ = decimal.NewFromString("0")
-  pos.BadForAnalysis = false
   pos.PositionID = order_id
   pos.OpenSide = side
   pos.OpenOrderType = order_type
@@ -178,6 +177,50 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   pos.OpenPriceTime = a.Time
 }
 
+
+func (a *Asset) ClosePosition(order_type string, strat_name string) {
+  a.mutex.Lock()
+  defer a.mutex.Unlock()
+  // Check if position already exists
+  if _, ok := a.Positions[strat_name]; !ok {
+    return
+  }
+  pos := a.Positions[strat_name]
+  if pos.CloseOrderPending || pos.OpenOrderPending {
+    return
+  }
+  pos.CloseOrderPending = true
+  fmt.Println("Close trigger")
+  pos.CloseTriggerTime = time.Now().UTC()
+  // Send order
+  var err error
+  switch order_type {
+    case "IOC":
+      fmt.Println("asset 195")
+      switch pos.OpenSide {
+        case "long":
+          fmt.Println("asset 195")
+          err = order.CloseIOC("sell", a.Symbol, pos.PositionID, pos.Qty)
+        default:
+          fmt.Println(pos.OpenSide)
+      }
+  }
+  if err != nil {
+    log.Printf(
+      "[ ERROR ]\tFailed to close position in CloseIOC()\n" +
+      "  -> Symbol: %s\n" +
+      "  -> Order ID: %s\n" +
+      "  -> Error: %s\n",
+    a.Symbol, pos.PositionID, err)
+    push.Error("Error closing position in CloseIOC()", err)
+    return
+  }
+  order_sent_time := time.Now().UTC()
+  pos.CloseOrderSentTime = order_sent_time
+  pos.CloseOrderType = order_type
+  pos.CloseTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
+  pos.ClosePriceTime = a.Time
+}
 
 func (a *Asset) CheckForSignal() {
   rwmu.RLock()
