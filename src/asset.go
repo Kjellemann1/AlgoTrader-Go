@@ -190,19 +190,14 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
     return
   }
   pos.CloseOrderPending = true
-  fmt.Println("Close trigger")
   pos.CloseTriggerTime = time.Now().UTC()
   // Send order
   var err error
   switch order_type {
     case "IOC":
-      fmt.Println("asset 195")
       switch pos.OpenSide {
         case "long":
-          fmt.Println("asset 195")
           err = order.CloseIOC("sell", a.Symbol, pos.PositionID, pos.Qty)
-        default:
-          fmt.Println(pos.OpenSide)
       }
   }
   if err != nil {

@@ -3,7 +3,7 @@ package src
 
 import (
   "sync"
-
+  "fmt"
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
 )
 
@@ -11,6 +11,7 @@ var rwmu sync.RWMutex
 
 
 func Run() {
+
   db_chan := make(chan *Query, constant.CHANNEL_BUFFER_SIZE)
 
   assets := make(map[string]map[string]*Asset)
@@ -19,14 +20,27 @@ func Run() {
     for _, symbol := range constant.STOCK_LIST {
       assets["stock"][symbol] = NewAsset("stock", symbol)
     }
+    GetHistBars(assets["stock"], "stock")
   }
   if len(constant.CRYPTO_LIST) > 0 {
     assets["crypto"] = make(map[string]*Asset)
     for _, symbol := range constant.CRYPTO_LIST {
       assets["crypto"][symbol] = NewAsset("crypto", symbol)
     }
+    GetHistBars(assets["crypto"], "crypto")
   }
 
+  fmt.Println("Close:", assets["crypto"]["BTC/USD"].Close)
+  fmt.Println("Close:", assets["crypto"]["LTC/USD"].Close)
+  fmt.Println("Close:", assets["crypto"]["ETH/USD"].Close)
+  fmt.Println("Close:", assets["crypto"]["SHIB/USD"].Close)
+  fmt.Println("Close:", assets["crypto"]["AAVE/USD"].Close)
+  fmt.Println("Close:", assets["crypto"]["AVAX/USD"].Close)
+  fmt.Println("Close:", assets["crypto"]["BAT/USD"].Close)
+  fmt.Println("Close:", assets["crypto"]["BCH/USD"].Close)
+
+
+  panic("")
   var wg sync.WaitGroup
 
   // Database

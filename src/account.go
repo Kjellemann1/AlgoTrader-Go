@@ -327,7 +327,6 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   }
   // Close order logic
   if pos.CloseOrderPending {
-    fmt.Println("Account 330")
     if u.FilledAvgPrice != nil {
       pos.CloseFilledAvgPrice = *u.FilledAvgPrice
     }
@@ -335,7 +334,6 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
       pos.CloseFillTime = *u.FillTime
     }
     if u.Event == "fill" || u.Event == "canceled" {
-      fmt.Println("Account 338")
       a.db_chan <-pos.LogClose(u.StratName)
       if pos.Qty.IsZero() {
         asset.RemovePosition(u.StratName)
@@ -344,5 +342,3 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
     }
   }
 }
-
-

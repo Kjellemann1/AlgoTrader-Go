@@ -4,7 +4,7 @@ package constant
 import "net/http"
 
 
-const WINDOW_SIZE int = 500
+const WINDOW_SIZE int = 10
 
 const CHANNEL_BUFFER_SIZE int = 50
 const ORDER_AMOUNT_USD float64 = 500
@@ -23,6 +23,10 @@ var DB_PASSWORD string
 var DB_NAME string
 var DB_HOST string
 var DB_PORT string
+
+
+const HIST_DAYS = 1
+const HIST_LIMIT = 1000
 
 
 var STOCK_LIST = []string{
@@ -64,11 +68,11 @@ var CRYPTO_LIST = []string{
   "BTC/USD",
   "LTC/USD",
   "ETH/USD",
-  // "SHIB/USD",
-  // "AAVE/USD",
-  // "AVAX/USD",
-  // "BAT/USD",
-  // "BCH/USD",
+  "SHIB/USD",
+  "AAVE/USD",
+  "AVAX/USD",
+  "BAT/USD",
+  "BCH/USD",
   // "CRV/USD",
   // "DOGE/USD",
   // "DOT/USD",

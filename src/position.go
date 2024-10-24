@@ -7,7 +7,6 @@ package src
 import (
   "time"
   "log"
-  "fmt"
   "github.com/shopspring/decimal"
 )
 
@@ -57,7 +56,6 @@ func NewPosition(symbol string, price float64) *Position {
 }
 
 func (p *Position) LogOpen(strat_name string) *Query {
-  // TODO: Allocate on heap or stack?
   log.Printf("OPEN\t%s\t%s\n", p.Symbol, strat_name)
   query := &Query{
     Action: "open",
@@ -82,7 +80,6 @@ func (p *Position) LogOpen(strat_name string) *Query {
 }
 
 func (p *Position) LogClose(strat_name string) *Query {
-  // TODO: Allocate on heap or stack?
   log.Printf("CLOSE\t%s\t%s\n", p.Symbol, strat_name)
   var side string
   if p.OpenSide == "long" {
@@ -108,6 +105,5 @@ func (p *Position) LogClose(strat_name string) *Query {
     BadForAnalysis: p.BadForAnalysis,
   }
   // TODO: Implement log if buffer is full
-  fmt.Println("position 110")
   return query
 }

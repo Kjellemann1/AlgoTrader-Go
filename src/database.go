@@ -300,5 +300,4 @@ func NewDatabase(wg *sync.WaitGroup, db_chan chan *Query) {
   }
   db.db_chan = db_chan
   db.listen()
-  fmt.Println("After listen")
 }

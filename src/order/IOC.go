@@ -27,8 +27,8 @@ func OpenLongIOC(symbol string, order_id string, last_price float64) error {
 }
 
 
+// TODO: Check if position exists if order fails, and implement retry with backoff.
 func CloseIOC(side string, symbol string, order_id string, qty decimal.Decimal) error {
-  fmt.Println("IOC 31")
   payload := fmt.Sprintf(`{
     "symbol": "%s",
     "client_order_id": "%s",
