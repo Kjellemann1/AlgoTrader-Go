@@ -109,13 +109,13 @@ func (a *Asset) RemovePosition(strat_name string) {
 }
 
 
-func (a *Asset) CreateOrderID(action string, strat_name string) string {
+func (a *Asset) CreatePositionID(strat_name string) string {
   t := a.Time.Format(time.DateTime)
-  order_id := fmt.Sprintf(
-    "action[%s]_symbol[%s]_strat[%s]_time[%s]",
-    action, a.Symbol, strat_name, t,
+  position_id := fmt.Sprintf(
+    "symbol[%s]_strat[%s]_time[%s]",
+    a.Symbol, strat_name, t,
   )
-  return order_id
+  return position_id
 }
 
 
@@ -133,6 +133,9 @@ func (a *Asset) InitiatePositionObject(strat_name string) {
 
 
 func (a *Asset) OpenPosition(side string, order_type string, strat_name string) {
+  if side != "long" {
+    log.Fatal("[ FATAL ]\tOnly long positions are supported")  // TODO: Add support for short positions
+  }
   a.mutex.Lock()
   defer a.mutex.Unlock()
   // Check if position already exists
@@ -146,7 +149,7 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   }
   // Send order
   var err error
-  order_id := a.CreateOrderID("open", strat_name)
+  order_id := a.CreatePositionID(strat_name)
   switch order_type {
     case "IOC":
       err = order.OpenLongIOC(a.Symbol, order_id, a.Close[constant.WINDOW_SIZE-1])

@@ -29,24 +29,12 @@ func grepStratName(orderID string) (string, error) {
 }
 
 
-func grepAction(orderID string) (string, error) {
-  pattern := `action\[(.*?)\]`
-  re := regexp.MustCompile(pattern)
-  match := re.FindStringSubmatch(orderID)
-  if match != nil && len(match) > 1 {
-    return match[1], nil
-  }
-  return "", errors.New("")
-}
-
-
 // Used to send order updates received in Account instance to MarketSocket instanc(es)
 // through the order_update channel. 
 type OrderUpdate struct {
   Event          string
   AssetClass     string
   StratName      string
-  Action         string
   Side           *string
   Symbol         *string
   AssetQty       *decimal.Decimal
@@ -121,18 +109,6 @@ func (a *Account) messageHandler(message []byte) {
 
 func (a *Account) listen() {
   for {
-    /*
-      TODO: Might want to spawn a new goroutine for each order update. But needs
-      each routine needs to be unique to the position, as the chronology of the
-      order updates are important.
-
-      However, handling order updates might not be important for performance. 
-      What is important is the process from receiving the price to sending the order. 
-      What comes after that, unless trading at a really high frequency, is not really 
-      important as long as it doesnt block the other stuff. That has its own go routine. 
-      And spawnind more goroutines for these order updates might actually steal resources
-      from the more important stuff.
-    */
     _, message, err := a.conn.ReadMessage()
     if err != nil {
       // TODO: Better error handling
@@ -235,11 +211,6 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
   if err != nil {
     return nil
   }
-  // Grep action from order_id. Return if nil
-  action, err := grepAction(order_id_str)
-  if err != nil {
-    return nil
-  }
   // Extract side
   var side_ptr *string
   side := parsed_msg.Get("data").Get("order").GetStringBytes("side")
@@ -286,7 +257,6 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
     Event:            event_str,
     AssetClass:       asset_class_str,
     StratName:        strat_name,
-    Action:           action,
     Side:             side_ptr,
     Symbol:           symbol_ptr,
     AssetQty:         asset_qty_ptr,

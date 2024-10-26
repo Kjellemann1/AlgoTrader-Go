@@ -103,3 +103,5 @@ func GetHistBars(assets map[string]*Asset, asset_class string) {
     })
   }
 }
+
+// TODO: Add check that none of the prices are zero

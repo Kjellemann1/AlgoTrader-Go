@@ -56,7 +56,7 @@ func NewPosition(symbol string, price float64) *Position {
 }
 
 func (p *Position) LogOpen(strat_name string) *Query {
-  log.Printf("OPEN\t%s\t%s\n", p.Symbol, strat_name)
+  log.Printf("OPEN\t%s \t%s\n", p.Symbol, strat_name)
   query := &Query{
     Action: "open",
     PositionID: p.PositionID,
@@ -80,7 +80,7 @@ func (p *Position) LogOpen(strat_name string) *Query {
 }
 
 func (p *Position) LogClose(strat_name string) *Query {
-  log.Printf("CLOSE\t%s\t%s\n", p.Symbol, strat_name)
+  log.Printf("CLOSE\t%s \t%s\n", p.Symbol, strat_name)
   var side string
   if p.OpenSide == "long" {
     side = "sell"

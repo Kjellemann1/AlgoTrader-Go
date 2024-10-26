@@ -1,7 +1,10 @@
 
-// Each Market instance is connected to a websocket for an exclusive asset_class. It listens for price updates from the
-// market, as well as order updates from the Account instance, and updates the algo with this information.
-
+/*
+  Each Market instance is connected to a websocket for an exclusive asset_class. It listens for price updates from the
+  market, and updates the symbols with this information. It uses a worker pool with the same size as the number of symbols
+  to handle the updates concurrently. This is especially useful on bar updates, as the market can send updates for all symbols
+  at the same time.
+*/
 
 package src
 
@@ -21,11 +24,29 @@ import (
 )
 
 
+func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
+  for i := 0; i < n_workers; i++ {
+    wg.Add(1)
+    go func() {
+      defer wg.Done()
+      for message := range m.worker_pool_chan {
+        if err :=m.messageHandler(message); err != nil {
+          push.Error("Error reading message: ", err)
+          log.Println("Error reading message: ", err)
+          continue
+        }
+      }
+    }()
+  }
+}
+
+
 type Market struct {
   asset_class       string
   assets            map[string]*Asset
   conn              *websocket.Conn
   url               string
+  worker_pool_chan  chan []byte
 }
 
 
@@ -113,12 +134,12 @@ func (m *Market) messageHandler(message []byte) error {
   for _, element := range arr.GetArray() {
     message_type := string(element.GetStringBytes("T"))
     switch message_type {
-      case "success", "subscription":
-        m.onInitialMessages(element)
       case "b":
         m.onMarketBarUpdate(element)
       case "t":
         m.onMarketTradeUpdate(element)
+      case "success", "subscription":
+        m.onInitialMessages(element)
       case "error":
         push.Error("Error message from websocket for ", errors.New(string(message)))
         log.Panicf("[ ERROR ]\tError message from websocket for %s\n  -> %s\n", m.asset_class, string(message))
@@ -168,9 +189,12 @@ func (m *Market) connect() {
 
 
 // Listens for market updates from the websocket connection
-func (m *Market) listen() {
+func (m *Market) listen(n_workers int) {
   wg := sync.WaitGroup{}
   defer wg.Wait()
+
+  m.initiateWorkerPool(n_workers, &wg)
+
   for {
     _, message, err := m.conn.ReadMessage()
     if err != nil {
@@ -178,14 +202,7 @@ func (m *Market) listen() {
       log.Println("Error reading message: ", err)
       continue
     }
-    // Handle message in a new goroutine to handle messages concurrently
-    wg.Add(1)
-    go func(message []byte, wg *sync.WaitGroup) {
-      if err := m.messageHandler(message); err != nil {
-        push.Error("Error handling message: ", err)
-        log.Println("Error handling message: ", err)
-      }
-    }(message, &wg)
+    m.worker_pool_chan <- message
   }
 }
 
@@ -210,7 +227,8 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset, wg *syn
     asset_class: asset_class,
     url: url,
     assets: assets,
+    worker_pool_chan: make(chan []byte, len(*symbol_list_ptr)),
   }
   m.connect()
-  m.listen()
+  m.listen(len(*symbol_list_ptr))
 }

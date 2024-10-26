@@ -3,7 +3,6 @@ package src
 
 import (
   "sync"
-  "fmt"
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
 )
 
@@ -12,7 +11,7 @@ var rwmu sync.RWMutex
 
 func Run() {
 
-  db_chan := make(chan *Query, constant.CHANNEL_BUFFER_SIZE)
+  db_chan := make(chan *Query, len(constant.STOCK_LIST) + len(constant.CRYPTO_LIST))
 
   assets := make(map[string]map[string]*Asset)
   if len(constant.STOCK_LIST) > 0 {
@@ -30,17 +29,6 @@ func Run() {
     GetHistBars(assets["crypto"], "crypto")
   }
 
-  fmt.Println("Close:", assets["crypto"]["BTC/USD"].Close)
-  fmt.Println("Close:", assets["crypto"]["LTC/USD"].Close)
-  fmt.Println("Close:", assets["crypto"]["ETH/USD"].Close)
-  fmt.Println("Close:", assets["crypto"]["SHIB/USD"].Close)
-  fmt.Println("Close:", assets["crypto"]["AAVE/USD"].Close)
-  fmt.Println("Close:", assets["crypto"]["AVAX/USD"].Close)
-  fmt.Println("Close:", assets["crypto"]["BAT/USD"].Close)
-  fmt.Println("Close:", assets["crypto"]["BCH/USD"].Close)
-
-
-  panic("")
   var wg sync.WaitGroup
 
   // Database

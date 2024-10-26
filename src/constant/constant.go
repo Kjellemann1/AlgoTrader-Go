@@ -4,9 +4,8 @@ package constant
 import "net/http"
 
 
-const WINDOW_SIZE int = 10
+const WINDOW_SIZE int = 500
 
-const CHANNEL_BUFFER_SIZE int = 50
 const ORDER_AMOUNT_USD float64 = 500
 
 const ENDPOINT = "https://paper-api.alpaca.markets/v2"
@@ -25,41 +24,41 @@ var DB_HOST string
 var DB_PORT string
 
 
-const HIST_DAYS = 1
-const HIST_LIMIT = 1000
+const HIST_DAYS = 3
+const HIST_LIMIT = 10000
 
 
 var STOCK_LIST = []string{
-  // "AAPL",
-  // "MSFT",
-  // "NVDA",
-  // "GOOGL",
-  // "AMZN",
-  // "META",
-  // "BRK.B",
-  // "LLY",
-  // "TSM",
-  // "AVGO",
-  // "TSLA",
-  // "NVO",
-  // "JPM",
-  // "WMT",
-  // "V",
-  // "XOM",
-  // "UNH",
-  // "ASML",
-  // "MA",
-  // "ORCL",
-  // "PG",
-  // "COST",
-  // "JNJ",
-  // "HD",
-  // "BAC",
-  // "MRK",
-  // "ABBV",
-  // "AMD",
-  // "CVX",
-  // "NFLX",
+  "AAPL",
+  "MSFT",
+  "NVDA",
+  "GOOGL",
+  "AMZN",
+  "META",
+  "BRK.B",
+  "LLY",
+  "TSM",
+  "AVGO",
+  "TSLA",
+  "NVO",
+  "JPM",
+  "WMT",
+  "V",
+  "XOM",
+  "UNH",
+  "ASML",
+  "MA",
+  "ORCL",
+  "PG",
+  "COST",
+  "JNJ",
+  "HD",
+  "BAC",
+  "MRK",
+  "ABBV",
+  "AMD",
+  "CVX",
+  "NFLX",
 }
 
 
@@ -73,17 +72,17 @@ var CRYPTO_LIST = []string{
   "AVAX/USD",
   "BAT/USD",
   "BCH/USD",
-  // "CRV/USD",
-  // "DOGE/USD",
-  // "DOT/USD",
-  // "GRT/USD",
-  // "LINK/USD",
-  // "MKR/USD",
-  // "SOL/USD",
-  // "SUSHI/USD",
-  // "UNI/USD",
-  // "USDC/USD",
-  // "USDT/USD",
-  // "XTZ/USD",
-  // "YFI/USD",
+  "CRV/USD",
+  "DOGE/USD",
+  "DOT/USD",
+  "GRT/USD",
+  "LINK/USD",
+  "MKR/USD",
+  "SOL/USD",
+  "SUSHI/USD",
+  "UNI/USD",
+  "USDC/USD",
+  "USDT/USD",
+  "XTZ/USD",
+  "YFI/USD",
 }
