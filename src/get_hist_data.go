@@ -55,7 +55,6 @@ func makeRequest(asset_class string, page_token string) *fastjson.Value {
   if err != nil {
     log.Fatalf(
       "[ ERROR ]\tFailed to send request in GetHistBars()\n" +
-
       "  -> Error: %s\n",
     err)
   }

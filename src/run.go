@@ -9,8 +9,8 @@ import (
 var rwmu sync.RWMutex
 
 
+// This is for all intents and purposes the main function
 func Run() {
-
   db_chan := make(chan *Query, len(constant.STOCK_LIST) + len(constant.CRYPTO_LIST))
 
   assets := make(map[string]map[string]*Asset)
