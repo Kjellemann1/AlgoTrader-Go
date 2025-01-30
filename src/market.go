@@ -94,6 +94,7 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value) {
   asset := m.assets[symbol]
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   t = t.Add(1 * time.Minute)
+  log.Println("[ DIFF BAR ]\t", time.Now().Sub(t))  // Remove
   asset.UpdateWindowOnBar(
       element.GetFloat64("o"),
       element.GetFloat64("h"),
@@ -109,6 +110,7 @@ func (m *Market) onMarketTradeUpdate(element *fastjson.Value) {
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
+  log.Println("[ DIFF TRADE ]\t", time.Now().Sub(t))  // Remove
   price := element.GetFloat64("p")
   asset := m.assets[symbol]
   asset.UpdateWindowOnTrade(price, t)

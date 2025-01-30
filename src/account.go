@@ -12,9 +12,9 @@ import (
   "github.com/gorilla/websocket"
   "github.com/valyala/fastjson"
   "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
 )
 
 
@@ -152,16 +152,13 @@ func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
   p.Qty = p.Qty.Add(position_change)
   a.AssetQty = *u.AssetQty
   if !a.SumPosQtyEqAssetQty() {
-    push.Error("Sum of position qty not equal to asset qty", nil)
-    log.Printf(
-      "[ FATAL ]\tSum of position qty not equal to asset qty\n" +
-      "  -> Asset %d != %d Position\n" +
-      "  -> OrderUpdate: %v+\n" +
-      "  -> Closing all positions and shutting down\n",
-      a.AssetQty, p.Qty, u,
+    handlelog.Error(
+      errors.New("Sum of position qty not equal to asset qty"),
+      "Asset", a.AssetQty, "Position", p.Qty, "OrderUpdate", u,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
     order.CloseAllPositions(2, 0)
-    log.Fatal("Shutting down")
+    log.Fatal("SHUTTING DOWN")
   }
 }
 
@@ -170,12 +167,10 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
   // Extract event. Shutdown if nil
   event := parsed_msg.Get("data").GetStringBytes("event")
   if event == nil {
-    push.Error("EVENT NOT IN TRADE UPDATE\nSHUTTING DOWN\n", nil)
-    log.Printf(
-      "[ FATAL ]\tEvent not in trade update\n"+
-      "  -> Closing all positions and shutting down\n" +
-      "  -> Parsed message: %s\n",
-    parsed_msg)
+    handlelog.Error(
+      errors.New("EVENT NOT IN TRADE UPDATE"), "Parsed message", parsed_msg,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
     order.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
@@ -188,12 +183,10 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
   // Extract asset class. Shutdown if nil
   asset_class := parsed_msg.Get("data").Get("order").GetStringBytes("asset_class")
   if asset_class == nil {
-    push.Error("ASSET CLASS NOT IN TRADE UPDATE\nSHUTTING DOWN\n", nil)
-    log.Printf(
-      "[ FATAL ]\tAsset class not in trade update\n"+
-      "  -> Closing all positions and shutting down\n" +
-      "  -> Parsed message: %s\n",
-    parsed_msg)
+    handlelog.Error(
+      errors.New("ASSET CLASS NOT IN TRADE UPDATE"), "Parsed message", parsed_msg,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
     order.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
@@ -202,12 +195,10 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
   var symbol_ptr *string
   symbol := parsed_msg.Get("data").Get("order").GetStringBytes("symbol")
   if symbol == nil {
-    push.Error("SYMBOL NOT IN TRADE UPDATE\nSHUTTING DOWN\n", nil)
-    log.Printf(
-      "[ FATAL ]\tSymbol not in trade update\n"+
-      "  -> Closing all positions and shutting down\n" +
-      "  -> Parsed message: %s\n",
-    parsed_msg)
+    handlelog.Error(
+      errors.New("SYMBOL NOT IN TRADE UPDATE"), "Parsed message", parsed_msg,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
     order.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
@@ -216,8 +207,7 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
   // Extract PositionID. Return if nil
   order_id := parsed_msg.Get("data").Get("order").GetStringBytes("client_order_id")  // client_order_id == PositionID
   if order_id == nil {
-    push.Warning("Order id not found", nil)
-    log.Println("[ WARNING ]\tOrder ID not found")
+    handlelog.Warning(errors.New("Order id not found"), nil)
     return nil
   }
   order_id_str := string(order_id)
@@ -239,15 +229,9 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
   if asset_qty != nil {
     asset_qty_dec, err := decimal.NewFromString(string(asset_qty))
     if err != nil {
-      push.Error("FAILED TO CONVERT ASSET QTY TO decimal.Decimal", err)
-      log.Printf(
-        "[ FATAL ]\tFailed to convert asset qty to decimal.Decimal\n"+
-        "  -> Closing all positions and shutting down\n"+
-        "  -> Asset qty: %s\n" +
-        "  -> Error: %s\n",
-      asset_qty, err)
+      handlelog.Error(err, "Asset qty", asset_qty, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
       order.CloseAllPositions(2, 0)
-      log.Panicln("Shutting down")
+      log.Panicln("SHUTTING DOWN")
     }
     asset_qty_ptr = &asset_qty_dec
   }

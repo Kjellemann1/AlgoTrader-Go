@@ -8,8 +8,8 @@ import (
   "sync"
   "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
 )
 
 
@@ -157,13 +157,7 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
       err = order.OpenLongIOC(a.Symbol, order_id, a.Close[constant.WINDOW_SIZE-1])
   }
   if err != nil {
-    log.Printf(
-      "[ ERROR ]\tFailed to open long position in OpenLongIOC()\n" +
-      "  -> Symbol: %s\n" +
-      "  -> Order ID: %s\n" +
-      "  -> Error: %s\n",
-    a.Symbol, order_id, err)
-    push.Error("Error opening long position in OpenLongIOC()", err)
+    handlelog.Error(err, a.Symbol, order_id)
     delete(a.Positions, strat_name)
     return
   }
@@ -212,13 +206,7 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
       }
   }
   if err != nil {
-    log.Printf(
-      "[ ERROR ]\tFailed to close position in CloseIOC()\n" +
-      "  -> Symbol: %s\n" +
-      "  -> Order ID: %s\n" +
-      "  -> Error: %s\n",
-    a.Symbol, pos.PositionID, err)
-    push.Error("Error closing position in CloseIOC()", err)
+    handlelog.Error(err, a.Symbol, pos.PositionID)
     return
   }
   order_time_after := time.Now().UTC()

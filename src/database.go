@@ -6,13 +6,14 @@ import (
   "sync"
   "log"
   "time"
+  "errors"
   "database/sql"
   _ "github.com/go-sql-driver/mysql"
   "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
 )
 
 
@@ -131,62 +132,34 @@ func (db *Database) errorHandler(
   // TODO: Implement specific error handling for bad queries
   err error, func_name string, response sql.Result, query *Query, retries int, backoff_sec *int,
 ) {
-  if retries == 0 {
-    push.Warning("Failed to execute query", err)
-    log.Printf(
-      "[ WARNING ]\t%s failed\n" +
-      "  -> Retries: %d\n" +
-      "  -> Query: %v\n" +
-      "  -> Error: %s\n" +
-      "  -> Response: %s\n",
-      func_name, retries, *query, err.Error(), response,
-    )
-  } else {
-    push.Error("Failed to execute query on retry", err)
-    log.Printf(
-      "[ ERROR ]\t%s failed\n" +
-      "  -> Retries: %d\n" +
-      "  -> Error: %s\n",
-      func_name, retries, err.Error(),
-    )
-  }
+  handlelog.Warning2(err, "Query", *query, "Response", response, "Retries", retries)
   // Ping database. Ping() should automatically try to reconnect if the connection is lost (if I understood the docs correctly)
   err = db.pingAndSetupQueries()
   if err != nil {
     if retries <= 3 {  // Too many retries here could lead to stack overflow as a result of recursion
       // TODO: Implement no new trades flag
-      push.Error(fmt.Sprintf("Database connection lost\n  -> Trying again in %d\n", *backoff_sec), err)
-      log.Printf(
-        "[ ERROR ]\tFailed to reconnect to database\n" +
-        // TODO: Implement NO_NEW_TRADES
-        "  -> Setting NO_NEW_TRADES == true\n" +
-        "  -> Error: %s\n -> Retrying in %d seconds\n",
-        err.Error(), *backoff_sec,
-      )
+      handlelog.Warning(err, "Setting NO_NEW_TRADES == true", "Retrying in (seconds)", *backoff_sec)
       backoff.Backoff(backoff_sec)
       db.errorHandler(err, func_name, response, query, retries + 1, backoff_sec)
     } else {
-      push.Error("MAX RETRIES REACHED.\nCLOSING ALL POSITIONS AND SHUTTING DOWN.", err)
-      log.Printf("[ ERROR ]\tMAX RETRIES REACHED.\n  -> CLOSING ALL POSITIONS AND SHUTTING DOWN.\n")
+      handlelog.Error(err, "MAX RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
       order.CloseAllPositions(2, 0)
-      // TODO: Think this should be log.Fatal
       log.Panicln("SHUTTING DOWN")
     }
   }
   // If connection is successful, try to execute the query again
   if retries > 3 {
-    push.Error("MAX RETRIES REACHED.\nCLOSING ALL POSITIONS AND SHUTTING DOWN.", err)
-    log.Printf("[ ERROR ]\tMAX RETRIES REACHED.\n  -> CLOSING ALL POSITIONS AND SHUTTING DOWN.\n")
+    handlelog.Warning(nil, "MAX RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
     order.CloseAllPositions(2, 0)
-    // TODO: Think this should be log.Fatal
     log.Panicln("SHUTTING DOWN")
   }
   db.queryHandler(query, *backoff_sec, retries + 1)
   // This code is not reached if the insert fails
+  // TODO: Don't know if the "number of retries" here is correct like isnt it a always at least 1 retry?
   if retries > 0 {
-    push.Message("Query successful after: %s retries")
+    handlelog.Info("Query successful after retries", "Retries", retries)
   }
-  log.Printf("[ OK ]\tQuery executed after: %d retries\n", retries)
+  handlelog.Info("Query successful")
 }
 
 
@@ -268,9 +241,7 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
     case "update":
       db.updateTrailingStop(query, backoff_sec, retries)
     default:
-      push.Error("Invalid query type", nil)
-      log.Printf("[ ERROR ]\tInvalid query Action: %s\n", query.Action)
-      // TODO: Should probably shut down here
+      handlelog.Error(errors.New("Invalid query type"), "Query", query)
   }
 }
 
