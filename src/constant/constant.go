@@ -1,7 +1,11 @@
 
 package constant
 
-import "net/http"
+import (
+  "net/http"
+  "time"
+)
+
 
 
 const WINDOW_SIZE int = 500
@@ -28,37 +32,43 @@ const HIST_DAYS = 3
 const HIST_LIMIT = 10000
 
 
+const WSS_STOCK = "wss://stream.data.alpaca.markets/v2/iex"
+const WSS_CRYPTO = "wss://stream.data.alpaca.markets/v1beta3/crypto/us"
+
+const HTTP_TIMEOUT_SEC = 5 * time.Second
+
+
 var STOCK_LIST = []string{
-  "AAPL",
-  "MSFT",
-  "NVDA",
-  "GOOGL",
-  "AMZN",
-  "META",
-  "BRK.B",
-  "LLY",
-  "TSM",
-  "AVGO",
-  "TSLA",
-  "NVO",
-  "JPM",
-  "WMT",
-  "V",
-  "XOM",
-  "UNH",
-  "ASML",
-  "MA",
-  "ORCL",
-  "PG",
-  "COST",
-  "JNJ",
-  "HD",
-  "BAC",
-  "MRK",
-  "ABBV",
-  "AMD",
-  "CVX",
-  "NFLX",
+  // "AAPL",
+  // "MSFT",
+  // "NVDA",
+  // "GOOGL",
+  // "AMZN",
+  // "META",
+  // "BRK.B",
+  // "LLY",
+  // "TSM",
+  // "AVGO",
+  // "TSLA",
+  // "NVO",
+  // "JPM",
+  // "WMT",
+  // "V",
+  // "XOM",
+  // "UNH",
+  // "ASML",
+  // "MA",
+  // "ORCL",
+  // "PG",
+  // "COST",
+  // "JNJ",
+  // "HD",
+  // "BAC",
+  // "MRK",
+  // "ABBV",
+  // "AMD",
+  // "CVX",
+  // "NFLX",
 }
 
 

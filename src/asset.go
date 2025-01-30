@@ -133,6 +133,7 @@ func (a *Asset) InitiatePositionObject(strat_name string) {
 
 
 func (a *Asset) OpenPosition(side string, order_type string, strat_name string) {
+  timer := time.Now()
   if side != "long" {
     log.Fatal("[ FATAL ]\tOnly long positions are supported")  // TODO: Add support for short positions
   }
@@ -150,6 +151,7 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   // Send order
   var err error
   order_id := a.CreatePositionID(strat_name)
+  order_time_before := time.Now().UTC()
   switch order_type {
     case "IOC":
       err = order.OpenLongIOC(a.Symbol, order_id, a.Close[constant.WINDOW_SIZE-1])
@@ -165,10 +167,11 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
     delete(a.Positions, strat_name)
     return
   }
-  order_sent_time := time.Now().UTC()
+  order_time_after := time.Now().UTC()
   // Fill out the rest of the position object
   pos := a.Positions[strat_name]
-  pos.OpenOrderSentTime = order_sent_time
+  pos.OpenOrderTimeBefore = order_time_before
+  pos.OpenOrderTimeAfter = order_time_after
   pos.Symbol = a.Symbol
   pos.AssetClass = a.AssetClass
   pos.StratName = strat_name
@@ -178,6 +181,10 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   pos.OpenOrderType = order_type
   pos.OpenTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
   pos.OpenPriceTime = a.Time
+  log.Printf(
+    "[ TIMER total ]\t%.3f\n",
+    time.Since(timer).Seconds(),
+  )
 }
 
 
@@ -196,6 +203,7 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
   pos.CloseTriggerTime = time.Now().UTC()
   // Send order
   var err error
+  order_time_before := time.Now().UTC()
   switch order_type {
     case "IOC":
       switch pos.OpenSide {
@@ -213,8 +221,9 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
     push.Error("Error closing position in CloseIOC()", err)
     return
   }
-  order_sent_time := time.Now().UTC()
-  pos.CloseOrderSentTime = order_sent_time
+  order_time_after := time.Now().UTC()
+  pos.CloseOrderTimeBefore = order_time_before
+  pos.CloseOrderTimeAfter = order_time_after
   pos.CloseOrderType = order_type
   pos.CloseTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
   pos.ClosePriceTime = a.Time

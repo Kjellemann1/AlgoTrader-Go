@@ -54,7 +54,7 @@ type Account struct {
 
 
 func (a *Account) connect() {
-  conn, response, err := websocket.DefaultDialer.Dial("wss://paper-api.alpaca.markets/stream", constant.AUTH_HEADERS)
+  conn, response, err := websocket.DefaultDialer.Dial("wss://paper-api.alpaca.markets/stream", nil)
   if err != nil {
     log.Panicf("[ ERROR ]\tCould not connect to account websocket: %s\n  -> %+v", err, response)
   }
@@ -63,11 +63,20 @@ func (a *Account) connect() {
   }
   _, message, err := conn.ReadMessage()
   if err != nil {
-    log.Panicf("[ ERROR ]\tReading connection message from account websocket failed: %s\n  -> %s", err, message)
+    log.Panicf(
+      "[ ERROR ]\tReading connection message from account websocket failed\n" +
+      "  -> Error: %s\n" +
+      "  -> Message: %s",
+      err, message,
+    )
   }
   a.messageHandler(message)
   if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"action":"listen","data":{"streams":["trade_updates"]}}`)); err != nil {
-    log.Panicf("[ ERROR ]\tSending listen message to account websocket failed: %s", err)
+    log.Panicf(
+      "[ ERROR ]\tSending listen message to account websocket failed\n" +
+      "  -> Error: %s",
+      err,
+    )
   }
   a.conn = conn
 }
@@ -120,13 +129,19 @@ func (a *Account) listen() {
 }
 
 
-func NewAccount(wg *sync.WaitGroup, assets map[string]map[string]*Asset, db_chan chan *Query) {
-  defer wg.Done()
+// Constructor
+func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Account {
   a := &Account{
     parser: fastjson.Parser{},
     assets: assets,
     db_chan: db_chan,
   }
+  return a
+}
+
+
+func (a *Account) Start(wg *sync.WaitGroup) {
+  defer wg.Done()
   a.connect()
   a.listen()
 }

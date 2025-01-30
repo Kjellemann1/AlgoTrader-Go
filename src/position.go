@@ -23,7 +23,8 @@ type Position struct {
   OpenOrderPending      bool
   OpenTriggerTime       time.Time 
   OpenSide              string
-  OpenOrderSentTime     time.Time 
+  OpenOrderTimeBefore   time.Time 
+  OpenOrderTimeAfter    time.Time
   OpenOrderType         string
   OpenTriggerPrice      float64
   OpenPriceTime         time.Time
@@ -31,7 +32,8 @@ type Position struct {
   OpenFilledAvgPrice    float64
 
   CloseOrderPending     bool
-  CloseOrderSentTime    time.Time
+  CloseOrderTimeBefore  time.Time 
+  CloseOrderTimeAfter   time.Time
   CloseOrderType        string
   CloseFilledQty        decimal.Decimal  // What is this used for? Redundant? Might be for partial closing of positions
   CloseTriggerTime      time.Time
@@ -71,7 +73,8 @@ func (p *Position) LogOpen(strat_name string) *Query {
     TriggerPrice: p.OpenTriggerPrice,
     FillTime: p.OpenFillTime,
     FilledAvgPrice: p.OpenFilledAvgPrice,
-    OrderSentTime: p.OpenOrderSentTime,
+    OrderTimeBefore: p.OpenOrderTimeBefore,
+    OrderTimeAfter: p.OpenOrderTimeAfter,
     BadForAnalysis: p.BadForAnalysis,
     TrailingStopPrice: 0.0, // TODO: Change this when trailing stop is implemented
   }
@@ -101,7 +104,8 @@ func (p *Position) LogClose(strat_name string) *Query {
     TriggerPrice: p.CloseTriggerPrice,
     FillTime: p.CloseFillTime,
     FilledAvgPrice: p.CloseFilledAvgPrice,
-    OrderSentTime: p.CloseOrderSentTime,
+    OrderTimeBefore: p.CloseOrderTimeBefore,
+    OrderTimeAfter: p.CloseOrderTimeAfter,
     BadForAnalysis: p.BadForAnalysis,
   }
   // TODO: Implement log if buffer is full

@@ -30,7 +30,8 @@ type Query struct {
   TriggerPrice      float64
   FillTime          time.Time
   FilledAvgPrice    float64
-  OrderSentTime     time.Time
+  OrderTimeBefore   time.Time
+  OrderTimeAfter    time.Time
   TrailingStop      float64
   BadForAnalysis    bool
   TrailingStopPrice float64
@@ -65,9 +66,10 @@ func (db *Database) prepQueries() error {
       trigger_price,
       fill_time,
       filled_avg_price,
-      order_sent_time,
+      order_time_before,
+      order_time_after,
       bad_for_analysis
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
   `)
   if err != nil {
     return err
@@ -86,10 +88,11 @@ func (db *Database) prepQueries() error {
       trigger_price,
       fill_time,
       filled_avg_price,
-      order_sent_time,
+      order_time_before,
+      order_time_after,
       trailing_stop,
       bad_for_analysis
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
   `)
   if err != nil {
     return err
@@ -147,7 +150,7 @@ func (db *Database) errorHandler(
       func_name, retries, err.Error(),
     )
   }
-  // Ping database. Ping() should automatically try to reconnect if the connection is lost
+  // Ping database. Ping() should automatically try to reconnect if the connection is lost (if I understood the docs correctly)
   err = db.pingAndSetupQueries()
   if err != nil {
     if retries <= 3 {  // Too many retries here could lead to stack overflow as a result of recursion
@@ -203,7 +206,8 @@ func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
     query.TriggerPrice,
     query.FillTime,
     query.FilledAvgPrice,
-    query.OrderSentTime,
+    query.OrderTimeBefore,
+    query.OrderTimeAfter,
     query.BadForAnalysis,
   )
   if err != nil {
@@ -226,7 +230,8 @@ func (db *Database) insertPosition(query *Query, backoff_sec int, retries int) {
     query.TriggerPrice,
     query.FillTime,
     query.FilledAvgPrice,
-    query.OrderSentTime,
+    query.OrderTimeBefore,
+    query.OrderTimeAfter,
     query.TrailingStop,
     query.BadForAnalysis,
   )
@@ -289,15 +294,21 @@ func (db *Database) connect() {
 
 
 // Constructor
-func NewDatabase(wg *sync.WaitGroup, db_chan chan *Query) {
+func NewDatabase(db_chan chan *Query) (db *Database) {
+  db = &Database{}
+  db.db_chan = db_chan
+  return
+}
+
+
+func (db *Database) Start(wg *sync.WaitGroup) {
   defer wg.Done()
-  db := &Database{}
   db.connect()
   defer db.conn.Close()
   err := db.prepQueries()
   if err != nil {
     log.Panicf("[ ERROR ]\tsetupQueries() failed: %s\n", err.Error())
   }
-  db.db_chan = db_chan
+  // TODO: Implement error handling with backoff and reconnect
   db.listen()
 }

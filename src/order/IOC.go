@@ -2,7 +2,6 @@
 package order
 
 import (
-  "fmt"
   "log"
   "github.com/shopspring/decimal"
 )
@@ -10,17 +9,14 @@ import (
 
 func OpenLongIOC(symbol string, order_id string, last_price float64) error {
   qty := CalculateOpenQty("stock", last_price)
-  payload := fmt.Sprintf(`{
-    "symbol": "%s",
-    "client_order_id": "%s",
-    "qty": "%s",
-    "side": "buy",
-    "type": "market",
-    "time_in_force": "ioc",
-    "order_class": "simple"
-  }`, symbol, order_id, qty)
+  payload := `{` +
+    `"symbol": "` + symbol + `", ` +
+    `"client_order_id": "` + order_id + `", ` +
+    `"qty": "` + qty.String() + `", ` +
+    `"side": "buy", "type": "market", "time_in_force": "ioc", "order_class": "simple"` +
+  `}`
   if err := SendOrder(payload); err != nil {
-    log.Println("Error sending order in order.CloseLongIOC():", err.Error())
+    log.Println("Error sending order in order.OpenLongIOC():", err.Error())
     return err
   }
   return nil
@@ -29,15 +25,13 @@ func OpenLongIOC(symbol string, order_id string, last_price float64) error {
 
 // TODO: Check if position exists if order fails, and implement retry with backoff.
 func CloseIOC(side string, symbol string, order_id string, qty decimal.Decimal) error {
-  payload := fmt.Sprintf(`{
-    "symbol": "%s",
-    "client_order_id": "%s",
-    "qty": "%s",
-    "side": "%s",
-    "type": "market",
-    "time_in_force": "ioc",
-    "order_class": "simple"
-  }`, symbol, fmt.Sprintf("%s_close", order_id), qty, side)
+  payload := `{` +
+    `"symbol": "` + symbol + `", ` +
+    `"client_order_id": "` + order_id + `_close", ` +
+    `"qty": "` + qty.String() + `", ` +
+    `"side": "` + side + `", ` +
+    `"type": "market", "time_in_force": "ioc", "order_class": "simple"` +
+  `}`
   if err := SendOrder(payload); err != nil {
     log.Println("Error sending order in order.CloseIOC():", err.Error())
     return err

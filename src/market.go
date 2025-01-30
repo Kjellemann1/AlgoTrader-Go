@@ -13,6 +13,7 @@ import (
   "log"
   "errors"
   "fmt"
+  "net"
   "slices"
   "time"
   "strings"
@@ -20,7 +21,9 @@ import (
   "github.com/gorilla/websocket"
 
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
 )
 
 
@@ -31,8 +34,7 @@ func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
       defer wg.Done()
       for message := range m.worker_pool_chan {
         if err :=m.messageHandler(message); err != nil {
-          push.Error("Error reading message: ", err)
-          log.Println("Error reading message: ", err)
+          handlelog.Warning(err, "Message", message)
           continue
         }
       }
@@ -118,17 +120,14 @@ func (m *Market) messageHandler(message []byte) error {
   parser := fastjson.Parser{}
   arr, err := parser.ParseBytes(message)
   if err != nil {
-    push.Error("Error parsing message in market.messageHandler(): ", err)
-    log.Printf(
-      "Error message in market.messageHandler(): %s\n" + 
-      "  -> message: %s\n",
-    err, string(message))
+    handlelog.Warning(err, "Message", string(message))
     return errors.New("Error parsing message")
   }
   // Make sure arr is of type array as the API should return a list of messages
   if arr.Type() != fastjson.TypeArray {
-    log.Printf("Message is not an array. Type: %s\n  -> Message %s\n", arr.Type(), message)
-    return errors.New("Message is not an array")
+    err := errors.New("Message is not an array")
+    handlelog.Warning(err, "Message", string(message))
+    return err
   }
   // Handle each message based on the "T" field
   for _, element := range arr.GetArray() {
@@ -141,29 +140,32 @@ func (m *Market) messageHandler(message []byte) error {
       case "success", "subscription":
         m.onInitialMessages(element)
       case "error":
-        push.Error("Error message from websocket for ", errors.New(string(message)))
-        log.Panicf("[ ERROR ]\tError message from websocket for %s\n  -> %s\n", m.asset_class, string(message))
+        err := errors.New(string(message))
+        handlelog.ErrorPanic(err, "Message", string(message))
       default:
-        push.Warning("Unknown message type: ", errors.New(message_type))
-        log.Printf("[ WARNING ]\tUnknown message type: %s\n  -> %s\n", message_type, string(message))
+        handlelog.Warning(errors.New("Unknown message type"), "Message type", message_type, "Message", string(message))
     }
   }
   return nil
 }
 
 
-func (m *Market) connect() {
+func (m *Market) connect(initial *bool) error {
   // Connect to the websocket
   conn, _, err := websocket.DefaultDialer.Dial(m.url, constant.AUTH_HEADERS)
-  if err != nil {
-    panic(err)
+  if err != nil && *initial {
+    log.Panic(err)
+  } else if err != nil {
+    return err
   }
   m.conn = conn
   // Receive connection and authentication messages
   for i := 0; i < 2; i++ {
     _, message, err := m.conn.ReadMessage()
-    if err != nil {
-      log.Panicln(err)
+    if err != nil && *initial {
+      log.Panic(err)
+    } else if err != nil {
+      return err
     }
     m.messageHandler(message)
   }
@@ -181,35 +183,72 @@ func (m *Market) connect() {
   }
   // Receive subscription message
   _, sub_msg, err = m.conn.ReadMessage()
-  if err != nil {
-    log.Panicln(err)
+  if err != nil && *initial {
+    log.Panic(err)
+  } else if err != nil {
+    return err
   }
   m.messageHandler(sub_msg)
+  // Set up ping and pong handlers
+//   m.conn.SetPingHandler(func(appData string) error {
+//     // Send et pong-svar til serveren:
+//     err := m.conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(5*time.Second))
+//     if err != nil {
+//         return err
+//     }
+//     // Forny read-deadline (eksempel: 60 sek)
+//     m.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+//     return nil
+// })
+//   m.conn.SetPongHandler(func(appData string) error {
+//     m.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+//     log.Println("Pong received")
+//     return nil
+//   })
+  *initial = false
+  return nil
 }
 
 
 // Listens for market updates from the websocket connection
-func (m *Market) listen(n_workers int) {
+func (m *Market) listen(n_workers int) error {
   wg := sync.WaitGroup{}
   defer wg.Wait()
-
   m.initiateWorkerPool(n_workers, &wg)
-
+  ticker := time.NewTicker(20 * time.Second)
+  defer ticker.Stop()
   for {
-    _, message, err := m.conn.ReadMessage()
-    if err != nil {
-      push.Error("Error reading message: ", err)
-      log.Println("Error reading message: ", err)
-      continue
+    select {
+      case <-ticker.C:
+        if err := m.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+          handlelog.Warning(err)
+          return err
+        }
+      default:
+        _, message, err := m.conn.ReadMessage()
+        if err != nil {
+          if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
+              log.Println("i/o timeout. Reconnecting...")
+              return err
+          } else if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+            handlelog.Warning(err)
+            return err
+          } else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+            handlelog.Warning(err)
+            return err
+          } else {
+            handlelog.Warning(err, "Message", string(message))
+            continue
+          }
+        }
+        m.worker_pool_chan <- message
     }
-    m.worker_pool_chan <- message
   }
 }
 
 
 // Constructor
-func NewMarket(asset_class string, url string, assets map[string]*Asset, wg *sync.WaitGroup) {
-  defer wg.Done()
+func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Market) {
   // Check that all symbols are in the assets map
   var symbol_list_ptr *[]string
   if asset_class == "stock" {
@@ -219,16 +258,42 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset, wg *syn
   }
   for _, symbol := range *symbol_list_ptr {
     if _, ok := assets[symbol]; !ok {
-      log.Fatal("Symbol not found in assets map: ", symbol)
+      handlelog.ErrorPanic(errors.New("Symbol not found in assets map"), "Symbol", symbol)
     }
   }
-  // Initialize Market instance
-  m := &Market{
+  m = &Market{
     asset_class: asset_class,
     url: url,
     assets: assets,
     worker_pool_chan: make(chan []byte, len(*symbol_list_ptr)),
   }
-  m.connect()
-  m.listen(len(*symbol_list_ptr))
+  return
+}
+
+
+// Run function
+func (m *Market) Start(wg *sync.WaitGroup) {
+  defer wg.Done()
+  var backoff_sec int = 5
+  var retries int = 0
+  initial := true
+  for {
+    err := m.connect(&initial)
+    if err != nil {
+      if retries < 5 {
+        handlelog.Error(err, "Retries", retries)
+      } else {
+        handlelog.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "Closing all positions and shutting down", "...")
+        order.CloseAllPositions(2, 0)
+        log.Panic("SHUTTING DOWN")
+      }
+      backoff.Backoff(&backoff_sec)
+      retries++
+      continue
+    }
+    backoff_sec = 5
+    retries = 0
+    m.listen(len(m.assets))
+    m.conn.Close()
+  }
 }

@@ -8,7 +8,6 @@ import (
 
 var rwmu sync.RWMutex
 
-
 // This is for all intents and purposes the main function
 func Run() {
   db_chan := make(chan *Query, len(constant.STOCK_LIST) + len(constant.CRYPTO_LIST))
@@ -33,28 +32,26 @@ func Run() {
 
   // Database
   wg.Add(1)
-  go NewDatabase(&wg, db_chan)
+  db := NewDatabase(db_chan)
+  go db.Start(&wg)
 
-  // Account)
+  // Account
   wg.Add(1)
-  go NewAccount(&wg, assets, db_chan)
+  a := NewAccount(assets, db_chan)
+  go a.Start(&wg)
 
   // Stock
   if _, ok := assets["stock"]; ok {
+    stockMarket := NewMarket("stock", constant.WSS_STOCK, assets["stock"])
     wg.Add(1)
-    go NewMarket(
-      "stock", "wss://stream.data.alpaca.markets/v2/iex", 
-      assets["stock"], &wg,
-    )
+    go stockMarket.Start(&wg)
   }
 
   // Crypto
   if _, ok := assets["crypto"]; ok {
+    cryptoMarket := NewMarket("crypto", constant.WSS_CRYPTO, assets["crypto"])
     wg.Add(1)
-    go NewMarket(
-      "crypto", "wss://stream.data.alpaca.markets/v1beta3/crypto/us",
-      assets["crypto"], &wg,
-    )
+    go cryptoMarket.Start(&wg)
   } 
 
   wg.Wait()
