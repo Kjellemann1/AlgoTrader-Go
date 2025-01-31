@@ -27,6 +27,21 @@ import (
 )
 
 
+type Market struct {
+  asset_class       string
+  assets            map[string]*Asset
+  conn              *websocket.Conn
+  url               string
+  worker_pool_chan  chan MarketMessage
+}
+
+
+type MarketMessage struct {
+  message []byte
+  received_time time.Time
+}
+
+
 func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
   for i := 0; i < n_workers; i++ {
     wg.Add(1)
@@ -40,21 +55,6 @@ func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
       }
     }()
   }
-}
-
-
-type Market struct {
-  asset_class       string
-  assets            map[string]*Asset
-  conn              *websocket.Conn
-  url               string
-  worker_pool_chan  chan MarketMessage
-}
-
-
-type MarketMessage struct {
-  message []byte
-  received_time time.Time
 }
 
 
@@ -186,8 +186,7 @@ func (m *Market) connect(initial *bool) error {
   }
   sub_msg := []byte(fmt.Sprintf(`{"action":"subscribe", "trades":["%s"], "bars":["%s"]}`, sub_msg_symbols, sub_msg_symbols))
   if err := m.conn.WriteMessage(websocket.TextMessage, sub_msg); err != nil {
-
-    log.Panicln(err.Error())
+    log.Panicln(err.Error())  // TODO: Cant have panic here on reconnect
   }
   // Receive subscription message
   _, sub_msg, err = m.conn.ReadMessage()

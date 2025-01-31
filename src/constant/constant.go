@@ -37,6 +37,8 @@ const WSS_CRYPTO = "wss://stream.data.alpaca.markets/v1beta3/crypto/us"
 
 const HTTP_TIMEOUT_SEC = 5 * time.Second
 
+const MAX_TIME_DIFF_MS = 50 * time.Millisecond
+
 
 var STOCK_LIST = []string{
   // "AAPL",

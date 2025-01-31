@@ -112,13 +112,9 @@ func (a *Asset) RemovePosition(strat_name string) {
 }
 
 
-func (a *Asset) CreatePositionID(strat_name string) string {
-  t := a.Time.Format(time.DateTime)
-  position_id := fmt.Sprintf(
-    "symbol[%s]_strat[%s]_time[%s]",
-    a.Symbol, strat_name, t,
-  )
-  return position_id
+func (a *Asset) CreatePositionID(strat_name string) (position_id string) {
+  position_id = "symbol[" + a.Symbol + "]_strat[" + strat_name + "]_time[" + a.Time.Format(time.DateTime) + "]"
+  return
 }
 
 
@@ -136,13 +132,15 @@ func (a *Asset) InitiatePositionObject(strat_name string) {
 
 
 func (a *Asset) OpenPosition(side string, order_type string, strat_name string) {
-  log.Printf("[ Trigger O ]\t%s", a.Symbol)  // Remove
-  timer := time.Now()  // Remove
   if side != "long" {
     log.Fatal("[ FATAL ]\tOnly long positions are supported")  // TODO: Add support for short positions
   }
   a.mutex.Lock()
   defer a.mutex.Unlock()
+  // Check if diff between price time and received time is too large
+  if a.Time.Sub(a.ReceivedTime) > constant.MAX_TIME_DIFF_MS {
+    return
+  }
   // Check if position already exists
   if _, ok := a.Positions[strat_name]; ok {
     return
@@ -179,16 +177,10 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   pos.OpenOrderType = order_type
   pos.OpenTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
   pos.OpenPriceTime = a.Time
-  log.Printf(  // Remove
-    "[ TIMER total ]\t%.3f\n",
-    time.Since(timer).Seconds(),
-  )
 }
 
 
 func (a *Asset) ClosePosition(order_type string, strat_name string) {
-  log.Printf("[ Trigger C ]\t%s", a.Symbol)  // Remove
-  timer := time.Now()
   a.mutex.Lock()
   defer a.mutex.Unlock()
   // Check if position already exists
@@ -221,10 +213,6 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
   pos.CloseOrderType = order_type
   pos.CloseTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
   pos.ClosePriceTime = a.Time
-  log.Printf(  // Remove
-    "[ TIMER total ]\t%.3f\n",
-    time.Since(timer).Seconds(),
-  )
 }
 
 func (a *Asset) CheckForSignal() {
