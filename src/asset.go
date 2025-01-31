@@ -37,6 +37,7 @@ type Asset struct {
   Low              [constant.WINDOW_SIZE]float64
   Close            [constant.WINDOW_SIZE]float64
   Time             time.Time
+  ReceivedTime     time.Time
   lastCloseIsTrade bool
   mutex            sync.RWMutex
 }
@@ -69,7 +70,7 @@ func NewAsset(asset_class string, symbol string) *Asset {
 
 
 // Updates the window on Bar updates
-func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t time.Time) {
+func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t time.Time, received_time time.Time) {
   rwmu.Lock()
   defer rwmu.Unlock()
   if a.lastCloseIsTrade {
@@ -82,12 +83,13 @@ func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t 
   rollFloat(&a.High, h)
   rollFloat(&a.Low, l)
   a.Time = t
+  a.ReceivedTime = received_time
   a.lastCloseIsTrade = false
 }
 
 
 // Updates the windows on Trade updates
-func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time) {
+func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
   rwmu.Lock()
   defer rwmu.Unlock()
   if a.lastCloseIsTrade {
@@ -96,6 +98,7 @@ func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time) {
     rollFloat(&a.Close, c)
   }
   a.Time = t
+  a.ReceivedTime = received_time
   a.lastCloseIsTrade = true
 }
 
@@ -133,7 +136,8 @@ func (a *Asset) InitiatePositionObject(strat_name string) {
 
 
 func (a *Asset) OpenPosition(side string, order_type string, strat_name string) {
-  timer := time.Now()
+  log.Printf("[ Trigger O ]\t%s", a.Symbol)  // Remove
+  timer := time.Now()  // Remove
   if side != "long" {
     log.Fatal("[ FATAL ]\tOnly long positions are supported")  // TODO: Add support for short positions
   }
@@ -161,7 +165,7 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
     delete(a.Positions, strat_name)
     return
   }
-  order_time_after := time.Now().UTC()
+  order_time_after := time.Now().UTC()  // Remove
   // Fill out the rest of the position object
   pos := a.Positions[strat_name]
   pos.OpenOrderTimeBefore = order_time_before
@@ -175,7 +179,7 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   pos.OpenOrderType = order_type
   pos.OpenTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
   pos.OpenPriceTime = a.Time
-  log.Printf(
+  log.Printf(  // Remove
     "[ TIMER total ]\t%.3f\n",
     time.Since(timer).Seconds(),
   )
@@ -183,6 +187,8 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
 
 
 func (a *Asset) ClosePosition(order_type string, strat_name string) {
+  log.Printf("[ Trigger C ]\t%s", a.Symbol)  // Remove
+  timer := time.Now()
   a.mutex.Lock()
   defer a.mutex.Unlock()
   // Check if position already exists
@@ -197,7 +203,7 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
   pos.CloseTriggerTime = time.Now().UTC()
   // Send order
   var err error
-  order_time_before := time.Now().UTC()
+  order_time_before := time.Now().UTC()  // Remove
   switch order_type {
     case "IOC":
       switch pos.OpenSide {
@@ -215,6 +221,10 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
   pos.CloseOrderType = order_type
   pos.CloseTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
   pos.ClosePriceTime = a.Time
+  log.Printf(  // Remove
+    "[ TIMER total ]\t%.3f\n",
+    time.Since(timer).Seconds(),
+  )
 }
 
 func (a *Asset) CheckForSignal() {

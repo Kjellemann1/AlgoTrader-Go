@@ -32,9 +32,9 @@ func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
     wg.Add(1)
     go func() {
       defer wg.Done()
-      for message := range m.worker_pool_chan {
-        if err :=m.messageHandler(message); err != nil {
-          handlelog.Warning(err, "Message", message)
+      for mm := range m.worker_pool_chan {
+        if err :=m.messageHandler(mm); err != nil {
+          handlelog.Warning(err, "Message", mm.message)
           continue
         }
       }
@@ -48,7 +48,13 @@ type Market struct {
   assets            map[string]*Asset
   conn              *websocket.Conn
   url               string
-  worker_pool_chan  chan []byte
+  worker_pool_chan  chan MarketMessage
+}
+
+
+type MarketMessage struct {
+  message []byte
+  received_time time.Time
 }
 
 
@@ -88,47 +94,46 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
 }
 
 
-func (m *Market) onMarketBarUpdate(element *fastjson.Value) {
+func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.Time) {
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
   asset := m.assets[symbol]
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   t = t.Add(1 * time.Minute)
-  log.Println("[ DIFF BAR ]\t", time.Now().Sub(t))  // Remove
   asset.UpdateWindowOnBar(
       element.GetFloat64("o"),
       element.GetFloat64("h"),
       element.GetFloat64("l"),
       element.GetFloat64("c"),
       t,
+      received_time,
     )
   asset.CheckForSignal()
 }
 
 
-func (m *Market) onMarketTradeUpdate(element *fastjson.Value) {
+func (m *Market) onMarketTradeUpdate(element *fastjson.Value, received_time time.Time) {
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
-  log.Println("[ DIFF TRADE ]\t", time.Now().Sub(t))  // Remove
   price := element.GetFloat64("p")
   asset := m.assets[symbol]
-  asset.UpdateWindowOnTrade(price, t)
+  asset.UpdateWindowOnTrade(price, t, received_time)
   asset.CheckForSignal()
 }
 
 
-func (m *Market) messageHandler(message []byte) error {
+func (m *Market) messageHandler(mm MarketMessage) error {
   parser := fastjson.Parser{}
-  arr, err := parser.ParseBytes(message)
+  arr, err := parser.ParseBytes(mm.message)
   if err != nil {
-    handlelog.Warning(err, "Message", string(message))
+    handlelog.Warning(err, "Message", string(mm.message))
     return errors.New("Error parsing message")
   }
   // Make sure arr is of type array as the API should return a list of messages
   if arr.Type() != fastjson.TypeArray {
     err := errors.New("Message is not an array")
-    handlelog.Warning(err, "Message", string(message))
+    handlelog.Warning(err, "Message", string(mm.message))
     return err
   }
   // Handle each message based on the "T" field
@@ -136,16 +141,16 @@ func (m *Market) messageHandler(message []byte) error {
     message_type := string(element.GetStringBytes("T"))
     switch message_type {
       case "b":
-        m.onMarketBarUpdate(element)
+        m.onMarketBarUpdate(element, mm.received_time)
       case "t":
-        m.onMarketTradeUpdate(element)
+        m.onMarketTradeUpdate(element, mm.received_time)
       case "success", "subscription":
         m.onInitialMessages(element)
       case "error":
-        err := errors.New(string(message))
-        handlelog.ErrorPanic(err, "Message", string(message))
+        err := errors.New(string(mm.message))
+        handlelog.ErrorPanic(err, "Message", string(mm.message))
       default:
-        handlelog.Warning(errors.New("Unknown message type"), "Message type", message_type, "Message", string(message))
+        handlelog.Warning(errors.New("Unknown message type"), "Message type", message_type, "Message", string(mm.message))
     }
   }
   return nil
@@ -169,7 +174,7 @@ func (m *Market) connect(initial *bool) error {
     } else if err != nil {
       return err
     }
-    m.messageHandler(message)
+    m.messageHandler(MarketMessage{message, time.Now()})
   }
   // Subscribe to symbols
   var sub_msg_symbols string = ""
@@ -181,6 +186,7 @@ func (m *Market) connect(initial *bool) error {
   }
   sub_msg := []byte(fmt.Sprintf(`{"action":"subscribe", "trades":["%s"], "bars":["%s"]}`, sub_msg_symbols, sub_msg_symbols))
   if err := m.conn.WriteMessage(websocket.TextMessage, sub_msg); err != nil {
+
     log.Panicln(err.Error())
   }
   // Receive subscription message
@@ -190,7 +196,7 @@ func (m *Market) connect(initial *bool) error {
   } else if err != nil {
     return err
   }
-  m.messageHandler(sub_msg)
+  m.messageHandler(MarketMessage{sub_msg, time.Now()})
   // Set up ping and pong handlers
 //   m.conn.SetPingHandler(func(appData string) error {
 //     // Send et pong-svar til serveren:
@@ -228,6 +234,7 @@ func (m *Market) listen(n_workers int) error {
         }
       default:
         _, message, err := m.conn.ReadMessage()
+        received_time := time.Now()
         if err != nil {
           if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
               log.Println("i/o timeout. Reconnecting...")
@@ -243,7 +250,7 @@ func (m *Market) listen(n_workers int) error {
             continue
           }
         }
-        m.worker_pool_chan <- message
+        m.worker_pool_chan <- MarketMessage{message, received_time}
     }
   }
 }
@@ -267,7 +274,7 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Mar
     asset_class: asset_class,
     url: url,
     assets: assets,
-    worker_pool_chan: make(chan []byte, len(*symbol_list_ptr)),
+    worker_pool_chan: make(chan MarketMessage, len(*symbol_list_ptr)),
   }
   return
 }
@@ -285,7 +292,7 @@ func (m *Market) Start(wg *sync.WaitGroup) {
       if retries < 5 {
         handlelog.Error(err, "Retries", retries)
       } else {
-        handlelog.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "Closing all positions and shutting down", "...")
+        handlelog.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
         order.CloseAllPositions(2, 0)
         log.Panic("SHUTTING DOWN")
       }

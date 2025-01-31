@@ -12,35 +12,37 @@ import (
 
 
 type Position struct {
-  Symbol                string
-  AssetClass            string
-  StratName             string
-  Qty                   decimal.Decimal
-  BadForAnalysis        bool
-  PositionID            string  // The position id is primarily used to track the order status. 
-                                // It contains the strategy name, which is used to identify the strategy that
-                                // placed the order when getting order updates from the broker.
-  OpenOrderPending      bool
-  OpenTriggerTime       time.Time 
-  OpenSide              string
-  OpenOrderTimeBefore   time.Time 
-  OpenOrderTimeAfter    time.Time
-  OpenOrderType         string
-  OpenTriggerPrice      float64
-  OpenPriceTime         time.Time
-  OpenFillTime          time.Time
-  OpenFilledAvgPrice    float64
+  Symbol                 string
+  AssetClass             string
+  StratName              string
+  Qty                    decimal.Decimal
+  BadForAnalysis         bool
+  PositionID             string  // The position id is primarily used to track the order status. 
+                                 // It contains the strategy name, which is used to identify the strategy that
+                                 // placed the order when getting order updates from the broker.
+  OpenOrderPending       bool
+  OpenTriggerTime        time.Time 
+  OpenSide               string
+  OpenOrderTimeBefore    time.Time 
+  OpenOrderTimeAfter     time.Time
+  OpenOrderType          string
+  OpenTriggerPrice       float64
+  OpenPriceTime          time.Time
+  OpenPriceReceivedTime  time.Time
+  OpenFillTime           time.Time
+  OpenFilledAvgPrice     float64
 
-  CloseOrderPending     bool
-  CloseOrderTimeBefore  time.Time 
-  CloseOrderTimeAfter   time.Time
-  CloseOrderType        string
-  CloseFilledQty        decimal.Decimal  // What is this used for? Redundant? Might be for partial closing of positions
-  CloseTriggerTime      time.Time
-  CloseTriggerPrice     float64
-  CloseFillTime         time.Time
-  CloseFilledAvgPrice   float64
-  ClosePriceTime        time.Time
+  CloseOrderPending      bool
+  CloseOrderTimeBefore   time.Time 
+  CloseOrderTimeAfter    time.Time
+  CloseOrderType         string
+  CloseFilledQty         decimal.Decimal  // What is this used for? Redundant? Might be for partial closing of positions
+  CloseTriggerTime       time.Time
+  CloseTriggerPrice      float64
+  CloseFillTime          time.Time
+  CloseFilledAvgPrice    float64
+  ClosePriceTime         time.Time
+  ClosePriceReceivedTime time.Time
 }
 
 
@@ -57,8 +59,9 @@ func NewPosition(symbol string, price float64) *Position {
   return p
 }
 
+
 func (p *Position) LogOpen(strat_name string) *Query {
-  log.Printf("OPEN\t%s \t%s\n", p.Symbol, strat_name)
+  log.Println("OPEN\t" + p.Symbol + "\t" + strat_name)
   query := &Query{
     Action: "open",
     PositionID: p.PositionID,
@@ -69,6 +72,7 @@ func (p *Position) LogOpen(strat_name string) *Query {
     OrderType: p.OpenOrderType,
     Qty: p.Qty,
     PriceTime: p.OpenPriceTime,
+    ReceivedTime: p.OpenPriceReceivedTime,
     TriggerTime: p.OpenTriggerTime,
     TriggerPrice: p.OpenTriggerPrice,
     FillTime: p.OpenFillTime,
@@ -82,8 +86,9 @@ func (p *Position) LogOpen(strat_name string) *Query {
   return query
 }
 
+
 func (p *Position) LogClose(strat_name string) *Query {
-  log.Printf("CLOSE\t%s \t%s\n", p.Symbol, strat_name)
+  log.Println("CLOSE\t" + p.Symbol + "\t" + strat_name)
   var side string
   if p.OpenSide == "long" {
     side = "sell"
@@ -100,6 +105,7 @@ func (p *Position) LogClose(strat_name string) *Query {
     OrderType: p.CloseOrderType,
     Qty: p.Qty,
     PriceTime: p.ClosePriceTime,
+    ReceivedTime: p.ClosePriceReceivedTime,
     TriggerTime: p.CloseTriggerTime,
     TriggerPrice: p.CloseTriggerPrice,
     FillTime: p.CloseFillTime,

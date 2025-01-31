@@ -27,6 +27,7 @@ type Query struct {
   OrderType         string
   Qty               decimal.Decimal  // Stored as a string to avoid floating point errors
   PriceTime         time.Time
+  ReceivedTime      time.Time
   TriggerTime       time.Time
   TriggerPrice      float64
   FillTime          time.Time
@@ -63,6 +64,7 @@ func (db *Database) prepQueries() error {
       order_type,
       qty,
       price_time,
+      received_time,
       trigger_time,
       trigger_price,
       fill_time,
@@ -70,7 +72,7 @@ func (db *Database) prepQueries() error {
       order_time_before,
       order_time_after,
       bad_for_analysis
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
   `)
   if err != nil {
     return err
@@ -85,6 +87,7 @@ func (db *Database) prepQueries() error {
       order_type,
       qty,
       price_time,
+      received_time,
       trigger_time,
       trigger_price,
       fill_time,
@@ -93,7 +96,7 @@ func (db *Database) prepQueries() error {
       order_time_after,
       trailing_stop,
       bad_for_analysis
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
   `)
   if err != nil {
     return err
@@ -175,6 +178,7 @@ func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
     query.OrderType,
     query.Qty, 
     query.PriceTime,
+    query.ReceivedTime,
     query.TriggerTime,
     query.TriggerPrice,
     query.FillTime,
@@ -199,6 +203,7 @@ func (db *Database) insertPosition(query *Query, backoff_sec int, retries int) {
     query.OrderType,
     query.Qty,
     query.PriceTime,
+    query.ReceivedTime,
     query.TriggerTime,
     query.TriggerPrice,
     query.FillTime,
