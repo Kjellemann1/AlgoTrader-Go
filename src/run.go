@@ -6,7 +6,6 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
 )
 
-var rwmu sync.RWMutex
 
 // This is for all intents and purposes the main function
 func Run() {

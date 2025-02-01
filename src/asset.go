@@ -223,7 +223,7 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
 }
 
 func (a *Asset) CheckForSignal() {
-  rwmu.RLock()
-  defer rwmu.RUnlock()
+  a.mutex.Lock()
+  defer a.mutex.Unlock()
   a.testingStrategy()
 }

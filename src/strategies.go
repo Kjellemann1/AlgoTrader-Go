@@ -7,7 +7,7 @@ import (
 
 
 func (a *Asset) testingStrategy() {
-  strat_name := "test8"
+  strat_name := "test9"
   rsi := indicator.RSI(a.Close, 14)
   if rsi[len(rsi)-1] > 70 {
     a.OpenPosition("long", "IOC", strat_name)
