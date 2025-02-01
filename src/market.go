@@ -174,7 +174,7 @@ func (m *Market) connect(initial *bool) error {
     } else if err != nil {
       return err
     }
-    m.messageHandler(MarketMessage{message, time.Now()})
+    m.messageHandler(MarketMessage{message, time.Now().UTC()})
   }
   // Subscribe to symbols
   var sub_msg_symbols string = ""
@@ -195,7 +195,7 @@ func (m *Market) connect(initial *bool) error {
   } else if err != nil {
     return err
   }
-  m.messageHandler(MarketMessage{sub_msg, time.Now()})
+  m.messageHandler(MarketMessage{sub_msg, time.Now().UTC()})
   // Set up ping and pong handlers
 //   m.conn.SetPingHandler(func(appData string) error {
 //     // Send et pong-svar til serveren:
@@ -233,7 +233,7 @@ func (m *Market) listen(n_workers int) error {
         }
       default:
         _, message, err := m.conn.ReadMessage()
-        received_time := time.Now()
+        received_time := time.Now().UTC()
         if err != nil {
           if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
               log.Println("i/o timeout. Reconnecting...")

@@ -21,8 +21,8 @@ func Info(message string, details ...interface{}) {
     }
     logMsg += "\n  -> " + key + ": " + fmt.Sprint(details[i+1])
   }
-  log.Println(logMsg)
   push.Info(logMsg)
+  log.Println(logMsg)
 }
 
 
@@ -31,7 +31,6 @@ func Error(err error, details ...interface{}) {
     err = errors.New("Called with nil error")
     return
   }
-
   _, file, line, ok := runtime.Caller(1)
   if !ok {
     file = "unknown"
@@ -48,8 +47,8 @@ func Error(err error, details ...interface{}) {
     }
     logMsg += "\n  -> " + key + ": " + fmt.Sprint(details[i+1])
   }
-  log.Println(logMsg)
   push.Error(logMsg)
+  log.Println(logMsg)
 }
 
 func ErrorPanic(err error, details ...interface{}) {
@@ -57,7 +56,6 @@ func ErrorPanic(err error, details ...interface{}) {
     err = errors.New("Called with nil error")
     return
   }
-
   _, file, line, ok := runtime.Caller(1)
   if !ok {
     file = "unknown"
@@ -101,6 +99,7 @@ func Warning(err error, details ...interface{}) {
     logMsg += "\n  -> " + key + ": " + fmt.Sprint(details[i+1])
   }
   push.Warning(logMsg)
+  log.Println(logMsg)
 }
 
 
@@ -128,8 +127,8 @@ func Error2(err error, details ...interface{}) {
     }
     logMsg += "\n  -> " + key + ": " + fmt.Sprint(details[i+1])
   }
-  log.Println(logMsg)
   push.Error(logMsg)
+  log.Println(logMsg)
 }
 
 
@@ -155,4 +154,5 @@ func Warning2(err error, details ...interface{}) {
     logMsg += "\n  -> " + key + ": " + fmt.Sprint(details[i+1])
   }
   push.Warning(logMsg)
+  log.Println(logMsg)
 }

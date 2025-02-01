@@ -191,6 +191,9 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
     log.Panicln("SHUTTING DOWN")
   }
   asset_class_str := string(asset_class)
+  if asset_class_str == "us_equity" {
+    asset_class_str = "stock"
+  }
   // Extract symbol, Return if nil
   var symbol_ptr *string
   symbol := parsed_msg.Get("data").Get("order").GetStringBytes("symbol")

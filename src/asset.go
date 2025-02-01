@@ -2,10 +2,10 @@
 package src
 
 import (
-  "fmt"
   "log"
   "time"
   "sync"
+  "fmt"
   "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
@@ -71,8 +71,8 @@ func NewAsset(asset_class string, symbol string) *Asset {
 
 // Updates the window on Bar updates
 func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t time.Time, received_time time.Time) {
-  rwmu.Lock()
-  defer rwmu.Unlock()
+  a.mutex.Lock()
+  defer a.mutex.Unlock()
   if a.lastCloseIsTrade {
     a.Close[constant.WINDOW_SIZE-1] = c
   } else {
@@ -90,8 +90,8 @@ func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t 
 
 // Updates the windows on Trade updates
 func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
-  rwmu.Lock()
-  defer rwmu.Unlock()
+  a.mutex.Lock()
+  defer a.mutex.Unlock()
   if a.lastCloseIsTrade {
     a.Close[constant.WINDOW_SIZE - 1] = c
   } else {
@@ -106,15 +106,19 @@ func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.T
 // Remove position
 // TODO: Remove position from database as well
 func (a *Asset) RemovePosition(strat_name string) {
-  rwmu.Lock()
-  defer rwmu.Unlock()
+  a.mutex.Lock()
+  defer a.mutex.Unlock()
   delete(a.Positions, strat_name)
 }
 
 
-func (a *Asset) CreatePositionID(strat_name string) (position_id string) {
-  position_id = "symbol[" + a.Symbol + "]_strat[" + strat_name + "]_time[" + a.Time.Format(time.DateTime) + "]"
-  return
+func (a *Asset) CreatePositionID(strat_name string) string {
+  t := a.Time.Format(time.DateTime)
+  position_id := fmt.Sprintf(
+    "symbol[%s]_strat[%s]_time[%s]",
+    a.Symbol, strat_name, t,
+  )
+  return position_id
 }
 
 
@@ -138,7 +142,8 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   a.mutex.Lock()
   defer a.mutex.Unlock()
   // Check if diff between price time and received time is too large
-  if a.Time.Sub(a.ReceivedTime) > constant.MAX_TIME_DIFF_MS {
+  if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
+    log.Println("[ INFO ]\tOpen cancelled due to time diff too large", a.Symbol)
     return
   }
   // Check if position already exists
@@ -177,6 +182,7 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   pos.OpenOrderType = order_type
   pos.OpenTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
   pos.OpenPriceTime = a.Time
+  pos.OpenPriceReceivedTime = a.ReceivedTime
 }
 
 
@@ -213,6 +219,7 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
   pos.CloseOrderType = order_type
   pos.CloseTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
   pos.ClosePriceTime = a.Time
+  pos.ClosePriceReceivedTime = a.ReceivedTime
 }
 
 func (a *Asset) CheckForSignal() {

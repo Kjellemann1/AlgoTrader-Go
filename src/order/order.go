@@ -3,7 +3,6 @@ package order
 
 import (
   "io"
-  "log"
   "strings"
   "time"
   "net/http"
@@ -35,13 +34,7 @@ func SendOrder(payload string) error {
     return err
   }
   request.Header = constant.AUTH_HEADERS
-  dnsStart := time.Now()
   response, err := httpClient.Do(request)
-  dnsDuration := time.Since(dnsStart)
-  log.Printf(
-    "[ TIMER server ]\t%.3f\n",
-    dnsDuration.Seconds(),
-  )
   if err != nil {
     handlelog.Error(err, response)
     return err

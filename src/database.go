@@ -163,6 +163,7 @@ func (db *Database) errorHandler(
     handlelog.Info("Query successful after retries", "Retries", retries)
   }
   handlelog.Info("Query successful")
+  // TODO: Reset backoff and retries?
 }
 
 
@@ -254,7 +255,7 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
 func (db *Database) listen() {
   for {
     query := <-db.db_chan
-    db.queryHandler(query, 0, 0)
+    db.queryHandler(query, 5, 0)
   }
 }
 
