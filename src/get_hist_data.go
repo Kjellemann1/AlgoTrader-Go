@@ -98,6 +98,7 @@ func GetHistBars(assets map[string]*Asset, asset_class string) {
           bar.GetFloat64("c"),
           t,
           time.Now().UTC(),
+          time.Now().UTC(),
         )
       }
     })

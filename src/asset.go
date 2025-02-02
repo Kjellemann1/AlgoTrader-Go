@@ -5,7 +5,6 @@ import (
   "log"
   "time"
   "sync"
-  "fmt"
   "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
@@ -38,8 +37,10 @@ type Asset struct {
   Close            [constant.WINDOW_SIZE]float64
   Time             time.Time
   ReceivedTime     time.Time
+  ProcessTime      time.Time
   lastCloseIsTrade bool
-  mutex            sync.RWMutex
+  rwm              sync.RWMutex
+  mutex            sync.Mutex
 }
 
 
@@ -70,9 +71,11 @@ func NewAsset(asset_class string, symbol string) *Asset {
 
 
 // Updates the window on Bar updates
-func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t time.Time, received_time time.Time) {
-  a.mutex.Lock()
-  defer a.mutex.Unlock()
+func (a *Asset) UpdateWindowOnBar(
+  o float64, h float64, l float64, c float64, t time.Time, received_time time.Time, process_time time.Time,
+) {
+  a.rwm.Lock()
+  defer a.rwm.Unlock()
   if a.lastCloseIsTrade {
     a.Close[constant.WINDOW_SIZE-1] = c
   } else {
@@ -84,14 +87,15 @@ func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t 
   rollFloat(&a.Low, l)
   a.Time = t
   a.ReceivedTime = received_time
+  a.ProcessTime = process_time
   a.lastCloseIsTrade = false
 }
 
 
 // Updates the windows on Trade updates
-func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
-  a.mutex.Lock()
-  defer a.mutex.Unlock()
+func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time, process_time time.Time) {
+  a.rwm.Lock()
+  defer a.rwm.Unlock()
   if a.lastCloseIsTrade {
     a.Close[constant.WINDOW_SIZE - 1] = c
   } else {
@@ -99,80 +103,62 @@ func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.T
   }
   a.Time = t
   a.ReceivedTime = received_time
+  a.ProcessTime = process_time
   a.lastCloseIsTrade = true
 }
 
 
-// Remove position
-// TODO: Remove position from database as well
 func (a *Asset) RemovePosition(strat_name string) {
-  a.mutex.Lock()
-  defer a.mutex.Unlock()
+  a.rwm.Lock()
+  defer a.rwm.Unlock()
   delete(a.Positions, strat_name)
 }
 
 
-func (a *Asset) CreatePositionID(strat_name string) string {
+func (a *Asset) createPositionID(strat_name string) string {
   t := a.Time.Format(time.DateTime)
-  position_id := fmt.Sprintf(
-    "symbol[%s]_strat[%s]_time[%s]",
-    a.Symbol, strat_name, t,
-  )
+  position_id := "symbol[" + a.Symbol + "]_strat[" + strat_name + "]_time[" + t + "]"
   return position_id
 }
 
 
-func (a *Asset) InitiatePositionObject(strat_name string) {
-  p := &Position {
-    Symbol: a.Symbol,
-    AssetClass: a.AssetClass,
-    StratName: strat_name,
-    Qty: decimal.NewFromInt(0),
-    BadForAnalysis: false,
-    OpenTriggerTime: time.Now().UTC(),
+func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string, last_close float64) (err error) {
+  switch order_type {
+    case "IOC":
+      err = order.OpenLongIOC(symbol, order_id, last_close)
   }
-  a.Positions[strat_name] = p
+  return
 }
 
 
-func (a *Asset) OpenPosition(side string, order_type string, strat_name string) {
-  if side != "long" {
-    log.Fatal("[ FATAL ]\tOnly long positions are supported")  // TODO: Add support for short positions
+func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, symbol string, qty decimal.Decimal) (err error) {
+  var side string
+  switch open_side {
+  case "long":
+    side = "sell"
+  case "short":
+    side = "buy"
   }
+  switch order_type {
+    case "IOC":
+      err = order.CloseIOC(side, symbol, order_id, qty)
+  }
+  return
+}
+
+
+func (a *Asset) initiatePositionObject(strat_name string, order_type string, side string, order_id string, trigger_time time.Time) {
+  a.rwm.Lock()
+  a.Positions[strat_name] = NewPosition(a.Symbol)
+  a.rwm.Unlock()
   a.mutex.Lock()
   defer a.mutex.Unlock()
-  // Check if diff between price time and received time is too large
-  if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
-    log.Println("[ INFO ]\tOpen cancelled due to time diff too large", a.Symbol)
-    return
-  }
-  // Check if position already exists
-  if _, ok := a.Positions[strat_name]; ok {
-    return
-  }
-  // Initiate position object
-  a.Positions[strat_name] = NewPosition(a.Symbol, a.Close[constant.WINDOW_SIZE-1])
   if a.Positions[strat_name] == nil {
     log.Fatal("Position object is nil for symbol: ", a.Symbol)
   }
-  // Send order
-  var err error
-  order_id := a.CreatePositionID(strat_name)
-  order_time_before := time.Now().UTC()
-  switch order_type {
-    case "IOC":
-      err = order.OpenLongIOC(a.Symbol, order_id, a.Close[constant.WINDOW_SIZE-1])
-  }
-  if err != nil {
-    handlelog.Error(err, a.Symbol, order_id)
-    delete(a.Positions, strat_name)
-    return
-  }
-  order_time_after := time.Now().UTC()  // Remove
-  // Fill out the rest of the position object
   pos := a.Positions[strat_name]
-  pos.OpenOrderTimeBefore = order_time_before
-  pos.OpenOrderTimeAfter = order_time_after
+  pos.rwm.Lock()
+  defer pos.rwm.Unlock()
   pos.Symbol = a.Symbol
   pos.AssetClass = a.AssetClass
   pos.StratName = strat_name
@@ -181,14 +167,43 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   pos.OpenSide = side
   pos.OpenOrderType = order_type
   pos.OpenTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
+  pos.OpenTriggerTime = trigger_time
   pos.OpenPriceTime = a.Time
   pos.OpenPriceReceivedTime = a.ReceivedTime
+  pos.OpenPriceProcessTime = a.ProcessTime
+}
+
+
+func (a *Asset) OpenPosition(side string, order_type string, strat_name string) {
+  // Check if position already exists
+  if _, ok := a.Positions[strat_name]; ok {
+    return
+  }
+  // Check if diff between price time and received time is too large
+  if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
+    log.Println("[ INFO ]\tOpen cancelled due to time diff too large", a.Symbol)
+    return
+  }
+  // Initiate position object
+  trigger_time := time.Now().UTC()
+  last_close := a.Close[constant.WINDOW_SIZE-1]
+  order_id := a.createPositionID(strat_name)
+  symbol := a.Symbol
+  a.mutex.Unlock()
+  a.initiatePositionObject(strat_name, order_type, side, order_id, trigger_time)
+  // Unlock Asset and send order
+  err := a.sendOpenOrder(order_type, order_id, symbol, last_close)
+  // If error, relock Asset and delete position
+  if err != nil {
+    handlelog.Error(err, "Symbol", symbol, "Strat", strat_name, "OrderType", order_type, "Side", side)
+    a.RemovePosition(strat_name)
+    return
+  }
+  a.mutex.Lock()
 }
 
 
 func (a *Asset) ClosePosition(order_type string, strat_name string) {
-  a.mutex.Lock()
-  defer a.mutex.Unlock()
   // Check if position already exists
   if _, ok := a.Positions[strat_name]; !ok {
     return
@@ -197,33 +212,31 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
   if pos.CloseOrderPending || pos.OpenOrderPending {
     return
   }
+  trigger_time := time.Now().UTC()
+  open_side := pos.OpenSide
+  symbol := pos.Symbol
+  qty := pos.Qty
+  order_id := pos.PositionID
+  pos.rwm.Lock()
   pos.CloseOrderPending = true
-  pos.CloseTriggerTime = time.Now().UTC()
-  // Send order
-  var err error
-  order_time_before := time.Now().UTC()  // Remove
-  switch order_type {
-    case "IOC":
-      switch pos.OpenSide {
-        case "long":
-          err = order.CloseIOC("sell", a.Symbol, pos.PositionID, pos.Qty)
-      }
-  }
-  if err != nil {
-    handlelog.Error(err, a.Symbol, pos.PositionID)
-    return
-  }
-  order_time_after := time.Now().UTC()
-  pos.CloseOrderTimeBefore = order_time_before
-  pos.CloseOrderTimeAfter = order_time_after
+  pos.CloseTriggerTime = trigger_time
   pos.CloseOrderType = order_type
   pos.CloseTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
   pos.ClosePriceTime = a.Time
   pos.ClosePriceReceivedTime = a.ReceivedTime
+  pos.ClosePriceProcessTime = a.ProcessTime
+  pos.rwm.Unlock()
+  // Send order
+  err := a.sendCloseOrder(open_side, order_type, order_id, symbol, qty)
+  if err != nil {
+    handlelog.Error(err, symbol, order_id)
+    return
+  }
 }
 
 func (a *Asset) CheckForSignal() {
-  a.mutex.Lock()
-  defer a.mutex.Unlock()
-  a.testingStrategy()
+  // Remember to Lock before calling every strategy function
+  a.testingRand()
+  // a.testingRSI()
+  // a.testingSMA()
 }

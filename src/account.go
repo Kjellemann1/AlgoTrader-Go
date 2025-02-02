@@ -148,6 +148,8 @@ func (a *Account) Start(wg *sync.WaitGroup) {
 
 
 func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
+  a.rwm.Lock()
+  defer a.rwm.Unlock()
   var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
   p.Qty = p.Qty.Add(position_change)
   a.AssetQty = *u.AssetQty
@@ -271,14 +273,14 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
 func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   var asset = a.assets[u.AssetClass][*u.Symbol]
   var pos *Position = asset.Positions[u.StratName]
-  asset.mutex.Lock()
-  defer asset.mutex.Unlock()
+  if pos == nil {
+    log.Panicf("Position nil: %s", *u.Symbol)
+  }
+  pos.rwm.Lock()
+  defer pos.rwm.Unlock()
   // Update AssetQty
   if u.AssetQty != nil {
     calculatePositionQty(pos, asset, u)
-  }
-  if pos == nil {
-    log.Panicf("Position nil: %s", *u.Symbol)
   }
   // Open order logic
   if pos.OpenOrderPending {
@@ -296,9 +298,8 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
       }
       pos.OpenOrderPending = false
     }
-  }
   // Close order logic
-  if pos.CloseOrderPending {
+  } else if pos.CloseOrderPending {
     if u.FilledAvgPrice != nil {
       pos.CloseFilledAvgPrice = *u.FilledAvgPrice
     }

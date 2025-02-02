@@ -95,6 +95,8 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
 
 
 func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.Time) {
+  process_time := time.Now().UTC()
+  log.Println("[ INFO TIME ]\t" + process_time.Sub(received_time).String())  // Remove
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
   asset := m.assets[symbol]
@@ -107,18 +109,21 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.T
       element.GetFloat64("c"),
       t,
       received_time,
+      process_time,
     )
   asset.CheckForSignal()
 }
 
 
 func (m *Market) onMarketTradeUpdate(element *fastjson.Value, received_time time.Time) {
+  process_time := time.Now().UTC()
+  log.Println("[ INFO TIME ]\t" + process_time.Sub(received_time).String())  // Remove
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   price := element.GetFloat64("p")
   asset := m.assets[symbol]
-  asset.UpdateWindowOnTrade(price, t, received_time)
+  asset.UpdateWindowOnTrade(price, t, received_time, process_time)
   asset.CheckForSignal()
 }
 
@@ -137,6 +142,7 @@ func (m *Market) messageHandler(mm MarketMessage) error {
     return err
   }
   // Handle each message based on the "T" field
+  log.Println("[ INFO N ]\t", len(arr.GetArray()))
   for _, element := range arr.GetArray() {
     message_type := string(element.GetStringBytes("T"))
     switch message_type {
@@ -196,22 +202,6 @@ func (m *Market) connect(initial *bool) error {
     return err
   }
   m.messageHandler(MarketMessage{sub_msg, time.Now().UTC()})
-  // Set up ping and pong handlers
-//   m.conn.SetPingHandler(func(appData string) error {
-//     // Send et pong-svar til serveren:
-//     err := m.conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(5*time.Second))
-//     if err != nil {
-//         return err
-//     }
-//     // Forny read-deadline (eksempel: 60 sek)
-//     m.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-//     return nil
-// })
-//   m.conn.SetPongHandler(func(appData string) error {
-//     m.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-//     log.Println("Pong received")
-//     return nil
-//   })
   *initial = false
   return nil
 }
@@ -225,32 +215,24 @@ func (m *Market) listen(n_workers int) error {
   ticker := time.NewTicker(20 * time.Second)
   defer ticker.Stop()
   for {
-    select {
-      case <-ticker.C:
-        if err := m.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-          handlelog.Warning(err)
+    _, message, err := m.conn.ReadMessage()
+    received_time := time.Now().UTC()
+    if err != nil {
+      if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
+          log.Println("i/o timeout. Reconnecting...")
           return err
-        }
-      default:
-        _, message, err := m.conn.ReadMessage()
-        received_time := time.Now().UTC()
-        if err != nil {
-          if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
-              log.Println("i/o timeout. Reconnecting...")
-              return err
-          } else if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
-            handlelog.Warning(err)
-            return err
-          } else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-            handlelog.Warning(err)
-            return err
-          } else {
-            handlelog.Warning(err, "Message", string(message))
-            continue
-          }
-        }
-        m.worker_pool_chan <- MarketMessage{message, received_time}
+      } else if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+        handlelog.Warning(err)
+        return err
+      } else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+        handlelog.Warning(err)
+        return err
+      } else {
+        handlelog.Warning(err, "Message", string(message))
+        continue
+      }
     }
+    m.worker_pool_chan <- MarketMessage{message, received_time}
   }
 }
 

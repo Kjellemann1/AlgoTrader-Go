@@ -7,7 +7,9 @@ package src
 import (
   "time"
   "log"
+  "sync"
   "github.com/shopspring/decimal"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/util/pretty"
 )
 
 
@@ -23,18 +25,15 @@ type Position struct {
   OpenOrderPending       bool
   OpenTriggerTime        time.Time 
   OpenSide               string
-  OpenOrderTimeBefore    time.Time 
-  OpenOrderTimeAfter     time.Time
   OpenOrderType          string
   OpenTriggerPrice       float64
   OpenPriceTime          time.Time
   OpenPriceReceivedTime  time.Time
+  OpenPriceProcessTime   time.Time
   OpenFillTime           time.Time
   OpenFilledAvgPrice     float64
 
   CloseOrderPending      bool
-  CloseOrderTimeBefore   time.Time 
-  CloseOrderTimeAfter    time.Time
   CloseOrderType         string
   CloseFilledQty         decimal.Decimal  // What is this used for? Redundant? Might be for partial closing of positions
   CloseTriggerTime       time.Time
@@ -43,25 +42,27 @@ type Position struct {
   CloseFilledAvgPrice    float64
   ClosePriceTime         time.Time
   ClosePriceReceivedTime time.Time
+  ClosePriceProcessTime  time.Time
+
+  rwm                    sync.RWMutex
 }
 
 
 // Constructor for Position
-func NewPosition(symbol string, price float64) *Position {
-  trigger_time := time.Now().UTC()
+func NewPosition(symbol string) *Position {
   p := &Position{
     BadForAnalysis: false,
     OpenOrderPending: true,
     CloseOrderPending: false,
-    OpenTriggerTime: trigger_time,
-    OpenTriggerPrice: price,
   }
   return p
 }
 
 
 func (p *Position) LogOpen(strat_name string) *Query {
-  log.Println("OPEN\t" + p.Symbol + "\t" + strat_name)
+  symbol := p.Symbol
+  pretty.AddWhitespace(&symbol, 10)
+  log.Println("OPEN\t" + symbol + "\t" + strat_name)
   query := &Query{
     Action: "open",
     PositionID: p.PositionID,
@@ -73,12 +74,11 @@ func (p *Position) LogOpen(strat_name string) *Query {
     Qty: p.Qty,
     PriceTime: p.OpenPriceTime,
     ReceivedTime: p.OpenPriceReceivedTime,
+    ProcessTime: p.OpenPriceProcessTime,
     TriggerTime: p.OpenTriggerTime,
     TriggerPrice: p.OpenTriggerPrice,
     FillTime: p.OpenFillTime,
     FilledAvgPrice: p.OpenFilledAvgPrice,
-    OrderTimeBefore: p.OpenOrderTimeBefore,
-    OrderTimeAfter: p.OpenOrderTimeAfter,
     BadForAnalysis: p.BadForAnalysis,
     TrailingStopPrice: 0.0, // TODO: Change this when trailing stop is implemented
   }
@@ -88,7 +88,9 @@ func (p *Position) LogOpen(strat_name string) *Query {
 
 
 func (p *Position) LogClose(strat_name string) *Query {
-  log.Println("CLOSE\t" + p.Symbol + "\t" + strat_name)
+  symbol := p.Symbol
+  pretty.AddWhitespace(&symbol, 10)
+  log.Println("CLOSE\t" + symbol + "\t" + strat_name)
   var side string
   if p.OpenSide == "long" {
     side = "sell"
@@ -106,12 +108,11 @@ func (p *Position) LogClose(strat_name string) *Query {
     Qty: p.Qty,
     PriceTime: p.ClosePriceTime,
     ReceivedTime: p.ClosePriceReceivedTime,
+    ProcessTime: p.ClosePriceProcessTime,
     TriggerTime: p.CloseTriggerTime,
     TriggerPrice: p.CloseTriggerPrice,
     FillTime: p.CloseFillTime,
     FilledAvgPrice: p.CloseFilledAvgPrice,
-    OrderTimeBefore: p.CloseOrderTimeBefore,
-    OrderTimeAfter: p.CloseOrderTimeAfter,
     BadForAnalysis: p.BadForAnalysis,
   }
   // TODO: Implement log if buffer is full
