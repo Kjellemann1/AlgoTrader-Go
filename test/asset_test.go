@@ -24,7 +24,7 @@ func TestUpdateWindowOnBar(t *testing.T) {
   a := src.Asset{Symbol: "AAPL"}
   for i := 0; i < TEST_SIZE; i++ {
     j := float64(i)
-    a.UpdateWindowOnBar(j, j, j, j, time.Now())
+    a.UpdateWindowOnBar(j, j, j, j, time.Now(), time.Now())
   }
 
 
