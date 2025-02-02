@@ -24,23 +24,50 @@ func rollFloat(arr *[constant.WINDOW_SIZE]float64, v float64) {
   arr[len(arr)-1] = v
 }
 
+type strategyFunc func(*Asset)
 
-// Asset struct
 type Asset struct {
   Symbol           string
   Positions        map[string]*Position
   AssetQty         decimal.Decimal
   AssetClass       string
-  Open             [constant.WINDOW_SIZE]float64
-  High             [constant.WINDOW_SIZE]float64
-  Low              [constant.WINDOW_SIZE]float64
-  Close            [constant.WINDOW_SIZE]float64
   Time             time.Time
   ReceivedTime     time.Time
   ProcessTime      time.Time
   lastCloseIsTrade bool
+
+  Open             [constant.WINDOW_SIZE]float64
+  High             [constant.WINDOW_SIZE]float64
+  Low              [constant.WINDOW_SIZE]float64
+  Close            [constant.WINDOW_SIZE]float64
+
+  strategies      []strategyFunc
+  channels        []chan struct{}
+
   rwm              sync.RWMutex
   mutex            sync.Mutex
+}
+
+func (a *Asset) StartStrategies() {
+  n := len(a.strategies)
+  a.channels = make([]chan struct{}, n)
+  for i := 0; i < n; i++ {
+    a.channels[i] = make(chan struct{})
+    go func(idx int) {
+      for range a.channels[idx] {
+        a.strategies[idx](a)
+      }
+    }(i)
+  }
+}
+
+
+func (a *Asset) CheckForSignal() {
+  for i := range a.channels {
+    if i >= 0 && i < len(a.channels) {
+      a.channels[i] <- struct{}{}
+    }
+  }
 }
 
 
@@ -59,15 +86,23 @@ func (a *Asset) SumPosQtyEqAssetQty() bool {
 
 
 // Constructor for Asset
-func NewAsset(asset_class string, symbol string) *Asset {
-  return &Asset{
+func NewAsset(asset_class string, symbol string) (a *Asset) {
+  a = &Asset{
     lastCloseIsTrade: false,
     Positions: make(map[string]*Position),
     AssetClass: asset_class,
     Symbol: symbol,
     AssetQty: decimal.NewFromInt(0),
+    strategies: []strategyFunc{
+      (*Asset).testingRand1,
+      (*Asset).testingRand2,
+    },
   }
+  a.StartStrategies()
+  return
 }
+
+
 
 
 // Updates the window on Bar updates
@@ -175,25 +210,20 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
 
 
 func (a *Asset) OpenPosition(side string, order_type string, strat_name string) {
-  // Check if position already exists
   if _, ok := a.Positions[strat_name]; ok {
     return
   }
-  // Check if diff between price time and received time is too large
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
     log.Println("[ INFO ]\tOpen cancelled due to time diff too large", a.Symbol)
     return
   }
-  // Initiate position object
   trigger_time := time.Now().UTC()
   last_close := a.Close[constant.WINDOW_SIZE-1]
-  order_id := a.createPositionID(strat_name)
   symbol := a.Symbol
+  order_id := a.createPositionID(strat_name)
   a.mutex.Unlock()
   a.initiatePositionObject(strat_name, order_type, side, order_id, trigger_time)
-  // Unlock Asset and send order
   err := a.sendOpenOrder(order_type, order_id, symbol, last_close)
-  // If error, relock Asset and delete position
   if err != nil {
     handlelog.Error(err, "Symbol", symbol, "Strat", strat_name, "OrderType", order_type, "Side", side)
     a.RemovePosition(strat_name)
@@ -204,7 +234,6 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
 
 
 func (a *Asset) ClosePosition(order_type string, strat_name string) {
-  // Check if position already exists
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
@@ -226,17 +255,9 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
   pos.ClosePriceReceivedTime = a.ReceivedTime
   pos.ClosePriceProcessTime = a.ProcessTime
   pos.rwm.Unlock()
-  // Send order
   err := a.sendCloseOrder(open_side, order_type, order_id, symbol, qty)
   if err != nil {
     handlelog.Error(err, symbol, order_id)
     return
   }
-}
-
-func (a *Asset) CheckForSignal() {
-  // Remember to Lock before calling every strategy function
-  a.testingRand()
-  // a.testingRSI()
-  // a.testingSMA()
 }

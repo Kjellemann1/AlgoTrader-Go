@@ -22,24 +22,26 @@ import (
 // }
 
 
-// func (a *Asset) testingStrategy() {
-//   a.mutex.Lock()
-//   if _, ok := a.Positions["test"]; !ok {
-//     a.OpenPosition("long", "IOC", "test")
-//   } else {
-//     a.ClosePosition("IOC", "test")
-//   }
-//   a.mutex.Unlock()
-// }
-
-
-func (a *Asset) testingRand() {
+func (a *Asset) testingRand1() {
   a.mutex.Lock()
-  strat_name := "testingRand9"
+  strat_name := "testingRand1_1"
   num := rand.Intn(100)
-  if num < 40 {
+  if num < 20 {
     a.OpenPosition("long", "IOC", strat_name)
-  } else if num > 60 {
+  } else if num >= 80 {
+    a.ClosePosition("IOC", strat_name)
+  }
+  a.mutex.Unlock()
+}
+
+
+func (a *Asset) testingRand2() {
+  a.mutex.Lock()
+  strat_name := "testingRand2_1"
+  num := rand.Intn(100)
+  if num < 20 {
+    a.OpenPosition("long", "IOC", strat_name)
+  } else if num >= 80 {
     a.ClosePosition("IOC", strat_name)
   }
   a.mutex.Unlock()

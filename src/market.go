@@ -96,7 +96,6 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
 
 func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.Time) {
   process_time := time.Now().UTC()
-  log.Println("[ INFO TIME ]\t" + process_time.Sub(received_time).String())  // Remove
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
   asset := m.assets[symbol]
@@ -117,7 +116,6 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.T
 
 func (m *Market) onMarketTradeUpdate(element *fastjson.Value, received_time time.Time) {
   process_time := time.Now().UTC()
-  log.Println("[ INFO TIME ]\t" + process_time.Sub(received_time).String())  // Remove
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
@@ -142,7 +140,6 @@ func (m *Market) messageHandler(mm MarketMessage) error {
     return err
   }
   // Handle each message based on the "T" field
-  log.Println("[ INFO N ]\t", len(arr.GetArray()))
   for _, element := range arr.GetArray() {
     message_type := string(element.GetStringBytes("T"))
     switch message_type {
