@@ -7,7 +7,6 @@ import (
 )
 
 
-
 const WINDOW_SIZE int = 500
 
 const ORDER_AMOUNT_USD float64 = 500
@@ -38,6 +37,7 @@ const WSS_CRYPTO = "wss://stream.data.alpaca.markets/v1beta3/crypto/us"
 const HTTP_TIMEOUT_SEC = 5 * time.Second
 
 const MAX_RECEIVED_TIME_DIFF_MS = 100 * time.Millisecond
+const MAX_TRIGGER_TIME_DIFF_MS = 100 * time.Millisecond
 
 
 var STOCK_LIST = []string{

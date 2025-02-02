@@ -95,7 +95,6 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
 
 
 func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.Time) {
-  process_time := time.Now().UTC()
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
   asset := m.assets[symbol]
@@ -108,20 +107,18 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.T
       element.GetFloat64("c"),
       t,
       received_time,
-      process_time,
     )
   asset.CheckForSignal()
 }
 
 
 func (m *Market) onMarketTradeUpdate(element *fastjson.Value, received_time time.Time) {
-  process_time := time.Now().UTC()
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   price := element.GetFloat64("p")
   asset := m.assets[symbol]
-  asset.UpdateWindowOnTrade(price, t, received_time, process_time)
+  asset.UpdateWindowOnTrade(price, t, received_time)
   asset.CheckForSignal()
 }
 

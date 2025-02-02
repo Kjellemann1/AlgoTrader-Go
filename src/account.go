@@ -255,8 +255,6 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
     filled_avg_price_ptr = &filled_avg_price_float
   }
 
-
-  // Send update to Market instance
   return &OrderUpdate {
     Event:            event_str,
     AssetClass:       asset_class_str,

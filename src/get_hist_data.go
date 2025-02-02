@@ -75,6 +75,7 @@ func GetHistBars(assets map[string]*Asset, asset_class string) {
     page_token = string(parsed.GetStringBytes("next_page_token"))
     x++
   }
+  temp_time := time.Now().UTC()
   for _, bars := range arr {
     if bars == nil {
       fmt.Println("Bars is nil")
@@ -97,12 +98,11 @@ func GetHistBars(assets map[string]*Asset, asset_class string) {
           bar.GetFloat64("l"),
           bar.GetFloat64("c"),
           t,
-          time.Now().UTC(),
-          time.Now().UTC(),
+          temp_time,
         )
       }
     })
   }
 }
 
-// TODO: Add check that none of the prices are zero
+// TODO: Add check that none of the prices are zero since the API returnes zero in place of missing data

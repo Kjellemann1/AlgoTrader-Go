@@ -33,7 +33,6 @@ type Asset struct {
   AssetClass       string
   Time             time.Time
   ReceivedTime     time.Time
-  ProcessTime      time.Time
   lastCloseIsTrade bool
 
   Open             [constant.WINDOW_SIZE]float64
@@ -107,7 +106,7 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
 
 // Updates the window on Bar updates
 func (a *Asset) UpdateWindowOnBar(
-  o float64, h float64, l float64, c float64, t time.Time, received_time time.Time, process_time time.Time,
+  o float64, h float64, l float64, c float64, t time.Time, received_time time.Time,
 ) {
   a.rwm.Lock()
   defer a.rwm.Unlock()
@@ -122,13 +121,12 @@ func (a *Asset) UpdateWindowOnBar(
   rollFloat(&a.Low, l)
   a.Time = t
   a.ReceivedTime = received_time
-  a.ProcessTime = process_time
   a.lastCloseIsTrade = false
 }
 
 
 // Updates the windows on Trade updates
-func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time, process_time time.Time) {
+func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
   a.rwm.Lock()
   defer a.rwm.Unlock()
   if a.lastCloseIsTrade {
@@ -138,7 +136,6 @@ func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.T
   }
   a.Time = t
   a.ReceivedTime = received_time
-  a.ProcessTime = process_time
   a.lastCloseIsTrade = true
 }
 
@@ -205,7 +202,6 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
   pos.OpenTriggerTime = trigger_time
   pos.OpenPriceTime = a.Time
   pos.OpenPriceReceivedTime = a.ReceivedTime
-  pos.OpenPriceProcessTime = a.ProcessTime
 }
 
 
@@ -213,11 +209,15 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
   if _, ok := a.Positions[strat_name]; ok {
     return
   }
+  trigger_time := time.Now().UTC()
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
-    log.Println("[ INFO ]\tOpen cancelled due to time diff too large", a.Symbol)
+    log.Println("[ INFO ]\tOpen cancelled due received time diff too large", a.Symbol)
+    return
+  } 
+  if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF_MS {
+    log.Println("[ INFO ]\tOpen cancelled due trigger time diff too large", a.Symbol)
     return
   }
-  trigger_time := time.Now().UTC()
   last_close := a.Close[constant.WINDOW_SIZE-1]
   symbol := a.Symbol
   order_id := a.createPositionID(strat_name)
@@ -253,7 +253,6 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
   pos.CloseTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
   pos.ClosePriceTime = a.Time
   pos.ClosePriceReceivedTime = a.ReceivedTime
-  pos.ClosePriceProcessTime = a.ProcessTime
   pos.rwm.Unlock()
   err := a.sendCloseOrder(open_side, order_type, order_id, symbol, qty)
   if err != nil {

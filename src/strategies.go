@@ -24,7 +24,7 @@ import (
 
 func (a *Asset) testingRand1() {
   a.mutex.Lock()
-  strat_name := "testingRand1_1"
+  strat_name := "testingRand1_3"
   num := rand.Intn(100)
   if num < 20 {
     a.OpenPosition("long", "IOC", strat_name)
@@ -37,7 +37,7 @@ func (a *Asset) testingRand1() {
 
 func (a *Asset) testingRand2() {
   a.mutex.Lock()
-  strat_name := "testingRand2_1"
+  strat_name := "testingRand2_3"
   num := rand.Intn(100)
   if num < 20 {
     a.OpenPosition("long", "IOC", strat_name)

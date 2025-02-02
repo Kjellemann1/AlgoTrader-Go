@@ -29,7 +29,6 @@ type Position struct {
   OpenTriggerPrice       float64
   OpenPriceTime          time.Time
   OpenPriceReceivedTime  time.Time
-  OpenPriceProcessTime   time.Time
   OpenFillTime           time.Time
   OpenFilledAvgPrice     float64
 
@@ -42,7 +41,6 @@ type Position struct {
   CloseFilledAvgPrice    float64
   ClosePriceTime         time.Time
   ClosePriceReceivedTime time.Time
-  ClosePriceProcessTime  time.Time
 
   rwm                    sync.RWMutex
 }
@@ -74,7 +72,6 @@ func (p *Position) LogOpen(strat_name string) *Query {
     Qty: p.Qty,
     PriceTime: p.OpenPriceTime,
     ReceivedTime: p.OpenPriceReceivedTime,
-    ProcessTime: p.OpenPriceProcessTime,
     TriggerTime: p.OpenTriggerTime,
     TriggerPrice: p.OpenTriggerPrice,
     FillTime: p.OpenFillTime,
@@ -108,7 +105,6 @@ func (p *Position) LogClose(strat_name string) *Query {
     Qty: p.Qty,
     PriceTime: p.ClosePriceTime,
     ReceivedTime: p.ClosePriceReceivedTime,
-    ProcessTime: p.ClosePriceProcessTime,
     TriggerTime: p.CloseTriggerTime,
     TriggerPrice: p.CloseTriggerPrice,
     FillTime: p.CloseFillTime,
