@@ -48,10 +48,12 @@ type Position struct {
 
 // Constructor for Position
 func NewPosition(symbol string) *Position {
+  zero, _ := decimal.NewFromString("0")
   p := &Position{
     BadForAnalysis: false,
     OpenOrderPending: true,
     CloseOrderPending: false,
+    Qty: zero,
   }
   return p
 }

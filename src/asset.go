@@ -194,7 +194,6 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
   pos.Symbol = a.Symbol
   pos.AssetClass = a.AssetClass
   pos.StratName = strat_name
-  pos.Qty, _ = decimal.NewFromString("0")
   pos.PositionID = order_id
   pos.OpenSide = side
   pos.OpenOrderType = order_type
@@ -206,16 +205,19 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
 
 
 func (a *Asset) OpenPosition(side string, order_type string, strat_name string) {
+  trigger_time := time.Now().UTC()
   if _, ok := a.Positions[strat_name]; ok {
     return
   }
-  trigger_time := time.Now().UTC()
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
     log.Println("[ INFO ]\tOpen cancelled due received time diff too large", a.Symbol)
     return
   } 
   if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF_MS {
     log.Println("[ INFO ]\tOpen cancelled due trigger time diff too large", a.Symbol)
+    return
+  }
+  if NoNewPositions == 1 {
     return
   }
   last_close := a.Close[constant.WINDOW_SIZE-1]
@@ -234,6 +236,7 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
 
 
 func (a *Asset) ClosePosition(order_type string, strat_name string) {
+  trigger_time := time.Now().UTC()
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
@@ -241,7 +244,6 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
   if pos.CloseOrderPending || pos.OpenOrderPending {
     return
   }
-  trigger_time := time.Now().UTC()
   open_side := pos.OpenSide
   symbol := pos.Symbol
   qty := pos.Qty

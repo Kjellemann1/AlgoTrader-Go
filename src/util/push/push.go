@@ -58,10 +58,10 @@ func Message(message string) {  // Change to 0
 
 
 func Warning(message string) {
-  push(message, "WARNING", 1)  // Change to 1
+  push(message, "WARNING", 0)  // Change to 1
 }
 
 
 func Error(message string) {
-  push(message, "ERROR", 1)  // Change to 2
+  push(message, "ERROR", 0)  // Change to 2
 }

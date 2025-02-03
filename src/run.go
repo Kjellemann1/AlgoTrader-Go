@@ -3,8 +3,21 @@ package src
 
 import (
   "sync"
+  "sync/atomic"
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
 )
+
+
+var NoNewPositions = int32(0)
+
+func SetNoNewPositions(value bool) {
+  switch value {
+  case true:
+    atomic.StoreInt32(&NoNewPositions, 1)
+  case false:
+    atomic.StoreInt32(&NoNewPositions, 0)
+  }
+}
 
 
 // This is for all intents and purposes the main function

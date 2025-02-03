@@ -305,11 +305,20 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
       pos.CloseFillTime = *u.FillTime
     }
     if u.Event == "fill" || u.Event == "canceled" {
-      a.db_chan <-pos.LogClose(u.StratName)
       if pos.Qty.IsZero() {
+        if pos.CloseFilledAvgPrice == 0 {  // Remove
+          log.Printf(
+            "[ ERROR ]\tLogClose called with zero filled avg price"+
+            "  -> OrderUpdate: %+v\n"+
+            "  -> Position before removal: {Symbol: %s, CloseFillTime: %v, Qty: %s, CloseFilledAvgPrice: %f, PositionID: %s}\n",
+            *u, pos.Symbol, pos.CloseFillTime, pos.Qty.String(), pos.CloseFilledAvgPrice, pos.PositionID,
+          )
+        }
+        a.db_chan <-pos.LogClose(u.StratName)
         asset.RemovePosition(u.StratName)
+      } else {
+        pos.CloseOrderPending = false
       }
-      pos.CloseOrderPending = false
     }
   }
 }
