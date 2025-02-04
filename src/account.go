@@ -120,9 +120,17 @@ func (a *Account) listen() {
   for {
     _, message, err := a.conn.ReadMessage()
     if err != nil {
-      // TODO: Better error handling
-      log.Println("Error reading message: ", err)
-      panic(err)
+      if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+        handlelog.Warning(err)
+        return
+      } else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+        handlelog.Warning(err)
+        return
+      } else {
+        NNP.NoNewPositionsTrue("Account.listen")
+        handlelog.Error(err, "Message", string(message), "NoNewPositions", NNP.flag)
+        continue
+      }
     }
     a.messageHandler(message)
   }
@@ -142,8 +150,13 @@ func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Accou
 
 func (a *Account) Start(wg *sync.WaitGroup) {
   defer wg.Done()
-  a.connect()
-  a.listen()
+  for {
+    a.connect()
+    a.listen()
+    // TODO: On reconnect, check that positions on the server are the same as locally
+    // TODO: Max retries and backoff
+  }
+
 }
 
 

@@ -13,7 +13,6 @@ import (
   "log"
   "errors"
   "fmt"
-  "net"
   "slices"
   "time"
   "strings"
@@ -212,10 +211,7 @@ func (m *Market) listen(n_workers int) error {
     _, message, err := m.conn.ReadMessage()
     received_time := time.Now().UTC()
     if err != nil {
-      if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
-          log.Println("i/o timeout. Reconnecting...")
-          return err
-      } else if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+      if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
         handlelog.Warning(err)
         return err
       } else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {

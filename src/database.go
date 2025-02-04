@@ -133,7 +133,7 @@ func (db *Database) errorHandler(
   // Ping database. Ping() should automatically try to reconnect if the connection is lost (if I understood the docs correctly)
   err = db.pingAndSetupQueries()
   if err != nil {
-    SetNoNewPositions(true)
+    NNP.NoNewPositionsTrue("Database")
     if retries <= 3 {  // Too many retries here could lead to stack overflow as a result of recursion
       handlelog.Warning(err, "Setting NO_NEW_TRADES == true", "Retrying in (seconds)", *backoff_sec)
       backoff.Backoff(backoff_sec)
@@ -157,7 +157,7 @@ func (db *Database) errorHandler(
     handlelog.Info("Query successful after retries", "Retries", retries)
   }
   handlelog.Info("Query successful")
-  SetNoNewPositions(false)
+  NNP.NoNewPositionsFalse("Database")
 }
 
 

@@ -93,15 +93,14 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
     Symbol: symbol,
     AssetQty: decimal.NewFromInt(0),
     strategies: []strategyFunc{
-      (*Asset).testingRand1,
-      (*Asset).testingRand2,
+      (*Asset).testingRSI1,
+      (*Asset).testingRSI2,
+      (*Asset).testingRSI3,
     },
   }
   a.StartStrategies()
   return
 }
-
-
 
 
 // Updates the window on Bar updates
@@ -217,7 +216,7 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
     log.Println("[ INFO ]\tOpen cancelled due trigger time diff too large", a.Symbol)
     return
   }
-  if NoNewPositions == 1 {
+  if NNP.flag == true {
     return
   }
   last_close := a.Close[constant.WINDOW_SIZE-1]
