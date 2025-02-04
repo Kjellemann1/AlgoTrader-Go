@@ -15,6 +15,7 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
 )
 
 
@@ -53,32 +54,48 @@ type Account struct {
 }
 
 
-func (a *Account) connect() {
+func (a *Account) connect(initial *bool) (err error) {
   conn, response, err := websocket.DefaultDialer.Dial("wss://paper-api.alpaca.markets/stream", nil)
-  if err != nil {
+  if err != nil && *initial {
     log.Panicf("[ ERROR ]\tCould not connect to account websocket: %s\n  -> %+v", err, response)
+  } else if err != nil {
+    log.Println("[ ERROR ]\tCould not connect to account websocket: ", err)
+    return
   }
-  if err := conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"action":"auth","key":"%s","secret":"%s"}`, constant.KEY, constant.SECRET))); err != nil {
+  err = conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"action":"auth","key":"%s","secret":"%s"}`, constant.KEY, constant.SECRET)))
+  if err != nil && *initial {
     log.Panicf("[ ERROR ]\tSending connection message to account websocket failed: %s", err)
+  } else if err != nil {
+    log.Println("[ ERROR ]\tSending connection message to account websocket failed: ", err)
+    return
   }
   _, message, err := conn.ReadMessage()
-  if err != nil {
+  if err != nil && *initial {
     log.Panicf(
       "[ ERROR ]\tReading connection message from account websocket failed\n" +
       "  -> Error: %s\n" +
       "  -> Message: %s",
       err, message,
     )
+  } else if err != nil {
+    log.Println("[ ERROR ]\tReading connection message from account websocket failed: ", err)
+    return
   }
   a.messageHandler(message)
-  if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"action":"listen","data":{"streams":["trade_updates"]}}`)); err != nil {
+  err = conn.WriteMessage(websocket.TextMessage, []byte(`{"action":"listen","data":{"streams":["trade_updates"]}}`))
+  if err != nil && *initial {
     log.Panicf(
       "[ ERROR ]\tSending listen message to account websocket failed\n" +
       "  -> Error: %s",
       err,
     )
+  } else if err != nil {
+    log.Println("[ ERROR ]\tSending listen message to account websocket failed: ", err)
+    return
   }
   a.conn = conn
+  *initial = false
+  return
 }
 
 
@@ -137,6 +154,35 @@ func (a *Account) listen() {
 }
 
 
+func (a *Account) Start(wg *sync.WaitGroup) {
+  defer wg.Done()
+  backoff_sec := 5
+  retries := 0
+  initial := true
+  for {
+    err := a.connect(&initial)
+    if err != nil {
+      if retries < 5 {
+        handlelog.Error(err, "Retries", retries)
+      } else {
+        handlelog.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+        order.CloseAllPositions(2, 0)
+        log.Panic("SHUTTING DOWN")
+      }
+      backoff.Backoff(&backoff_sec)
+      retries++
+      continue
+    }
+    a.listen()
+    backoff_sec = 5
+    retries = 0
+    // TODO: On reconnect, check that positions on the server are the same as locally
+    a.conn.Close()
+  }
+
+}
+
+
 // Constructor
 func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Account {
   a := &Account{
@@ -145,18 +191,6 @@ func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Accou
     db_chan: db_chan,
   }
   return a
-}
-
-
-func (a *Account) Start(wg *sync.WaitGroup) {
-  defer wg.Done()
-  for {
-    a.connect()
-    a.listen()
-    // TODO: On reconnect, check that positions on the server are the same as locally
-    // TODO: Max retries and backoff
-  }
-
 }
 
 
