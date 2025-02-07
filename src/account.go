@@ -145,7 +145,7 @@ func (a *Account) listen() {
         return
       } else {
         NNP.NoNewPositionsTrue("Account.listen")
-        handlelog.Error(err, "Message", string(message), "NoNewPositions", NNP.flag)
+        handlelog.Error(err, "Message", string(message), "NoNewPositions", NNP.Flag)
         continue
       }
     }
@@ -195,8 +195,8 @@ func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Accou
 
 
 func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
-  a.rwm.Lock()
-  defer a.rwm.Unlock()
+  a.Rwm.Lock()
+  defer a.Rwm.Unlock()
   var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
   p.Qty = p.Qty.Add(position_change)
   a.AssetQty = *u.AssetQty
@@ -321,8 +321,8 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   if pos == nil {
     log.Panicf("Position nil: %s", *u.Symbol)
   }
-  pos.rwm.Lock()
-  defer pos.rwm.Unlock()
+  pos.Rwm.Lock()
+  defer pos.Rwm.Unlock()
   // Update AssetQty
   if u.AssetQty != nil {
     calculatePositionQty(pos, asset, u)
@@ -352,6 +352,7 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
       pos.CloseFillTime = *u.FillTime
     }
     if u.Event == "fill" || u.Event == "canceled" {
+      a.db_chan <-pos.LogClose(u.StratName)
       if pos.Qty.IsZero() {
         if pos.CloseFilledAvgPrice == 0 {  // Remove
           log.Printf(
@@ -361,10 +362,10 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
             *u, pos.Symbol, pos.CloseFillTime, pos.Qty.String(), pos.CloseFilledAvgPrice, pos.PositionID,
           )
         }
-        a.db_chan <-pos.LogClose(u.StratName)
         asset.RemovePosition(u.StratName)
       } else {
         pos.CloseOrderPending = false
+        asset.Close("IOC", u.StratName)
       }
     }
   }

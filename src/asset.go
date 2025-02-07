@@ -12,40 +12,81 @@ import (
 )
 
 
-// Moves each element one step to the left, and inserts the new value at the last position.
-func rollInt(arr *[constant.WINDOW_SIZE]int, v int) {
-  copy(arr[:len(arr)-1], arr[1:])
-  arr[len(arr)-1] = v
+// Moves each element one step to the left, and inserts the new value at the tail.
+func rollFloat(arr *[]float64, v float64) {
+  copy((*arr)[:constant.WINDOW_SIZE-1], (*arr)[1:])
+  (*arr)[constant.WINDOW_SIZE-1] = v
 }
 
 
-func rollFloat(arr *[constant.WINDOW_SIZE]float64, v float64) {
-  copy(arr[:len(arr)-1], arr[1:])
-  arr[len(arr)-1] = v
+func (a *Asset) fillMissingMinutes(t time.Time) {
+  missingMinutes := int(t.Sub(a.Time).Minutes()) -1
+  if missingMinutes > 0 {
+    for i := 0; i < missingMinutes; i++ {
+      if a.lastCloseIsTrade {
+        a.C[constant.WINDOW_SIZE-1] = a.C[constant.WINDOW_SIZE-2]
+      } else {
+        rollFloat(&a.C, a.C[constant.WINDOW_SIZE-1])
+      }
+      rollFloat(&a.O, a.O[constant.WINDOW_SIZE-1])
+      rollFloat(&a.H, a.H[constant.WINDOW_SIZE-1])
+      rollFloat(&a.L, a.L[constant.WINDOW_SIZE-1])
+      a.lastCloseIsTrade = false
+    }
+  }
 }
+
 
 type strategyFunc func(*Asset)
 
+
 type Asset struct {
-  Symbol           string
-  Positions        map[string]*Position
-  AssetQty         decimal.Decimal
-  AssetClass       string
-  Time             time.Time
-  ReceivedTime     time.Time
-  lastCloseIsTrade bool
+  Symbol            string
+  Positions         map[string]*Position
+  AssetQty          decimal.Decimal
+  AssetClass        string
+  Time              time.Time
+  ReceivedTime      time.Time
+  lastCloseIsTrade  bool
 
-  Open             [constant.WINDOW_SIZE]float64
-  High             [constant.WINDOW_SIZE]float64
-  Low              [constant.WINDOW_SIZE]float64
-  Close            [constant.WINDOW_SIZE]float64
+  O                 []float64
+  H                 []float64
+  L                 []float64
+  C                 []float64
 
-  strategies      []strategyFunc
-  channels        []chan struct{}
+  strategies        []strategyFunc
+  channels          []chan struct{}
 
-  rwm              sync.RWMutex
-  mutex            sync.Mutex
+  Rwm               sync.RWMutex
+  Mutex             sync.Mutex
 }
+
+
+func NewAsset(asset_class string, symbol string) (a *Asset) {
+  a = &Asset{
+    lastCloseIsTrade: false,
+    Positions: make(map[string]*Position),
+    AssetClass: asset_class,
+    Symbol: symbol,
+    AssetQty: decimal.NewFromInt(0),
+    O: make([]float64, constant.WINDOW_SIZE),
+    H: make([]float64, constant.WINDOW_SIZE),
+    L: make([]float64, constant.WINDOW_SIZE),
+    C: make([]float64, constant.WINDOW_SIZE),
+    strategies: []strategyFunc{
+      (*Asset).testRSI,
+      (*Asset).testSMA,
+      (*Asset).testBBands,
+      (*Asset).testMomentum,
+      // (*Asset).testRSI1,
+      // (*Asset).testRSI2,
+      // (*Asset).testRSI3,
+    },
+  }
+  a.StartStrategies()
+  return
+}
+
 
 func (a *Asset) StartStrategies() {
   n := len(a.strategies)
@@ -70,7 +111,39 @@ func (a *Asset) CheckForSignal() {
 }
 
 
-// Check if the sum of the position quantities is equal to the asset quantity
+func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t time.Time, received_time time.Time) {
+  a.Rwm.Lock()
+  defer a.Rwm.Unlock()
+  a.fillMissingMinutes(t)
+  if a.lastCloseIsTrade {
+    a.C[constant.WINDOW_SIZE-1] = c
+  } else {
+    rollFloat(&a.C, c)
+    a.Time = t
+  }
+  rollFloat(&a.O, o)
+  rollFloat(&a.H, h)
+  rollFloat(&a.L, l)
+  a.Time = t
+  a.ReceivedTime = received_time
+  a.lastCloseIsTrade = false
+}
+
+
+func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
+  a.Rwm.Lock()
+  defer a.Rwm.Unlock()
+  if a.lastCloseIsTrade {
+    a.C[constant.WINDOW_SIZE - 1] = c
+  } else {
+    rollFloat(&a.C, c)
+  }
+  a.Time = t
+  a.ReceivedTime = received_time
+  a.lastCloseIsTrade = true
+}
+
+
 func (a *Asset) SumPosQtyEqAssetQty() bool {
   count, _ := decimal.NewFromString("0")
   for _, val := range a.Positions {
@@ -84,72 +157,42 @@ func (a *Asset) SumPosQtyEqAssetQty() bool {
 }
 
 
-// Constructor for Asset
-func NewAsset(asset_class string, symbol string) (a *Asset) {
-  a = &Asset{
-    lastCloseIsTrade: false,
-    Positions: make(map[string]*Position),
-    AssetClass: asset_class,
-    Symbol: symbol,
-    AssetQty: decimal.NewFromInt(0),
-    strategies: []strategyFunc{
-      (*Asset).testingRSI1,
-      (*Asset).testingRSI2,
-      (*Asset).testingRSI3,
-    },
-  }
-  a.StartStrategies()
-  return
-}
-
-
-// Updates the window on Bar updates
-func (a *Asset) UpdateWindowOnBar(
-  o float64, h float64, l float64, c float64, t time.Time, received_time time.Time,
-) {
-  a.rwm.Lock()
-  defer a.rwm.Unlock()
-  if a.lastCloseIsTrade {
-    a.Close[constant.WINDOW_SIZE-1] = c
-  } else {
-    rollFloat(&a.Close, c)
-    a.Time = t
-  }
-  rollFloat(&a.Open, o)
-  rollFloat(&a.High, h)
-  rollFloat(&a.Low, l)
-  a.Time = t
-  a.ReceivedTime = received_time
-  a.lastCloseIsTrade = false
-}
-
-
-// Updates the windows on Trade updates
-func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
-  a.rwm.Lock()
-  defer a.rwm.Unlock()
-  if a.lastCloseIsTrade {
-    a.Close[constant.WINDOW_SIZE - 1] = c
-  } else {
-    rollFloat(&a.Close, c)
-  }
-  a.Time = t
-  a.ReceivedTime = received_time
-  a.lastCloseIsTrade = true
-}
-
-
-func (a *Asset) RemovePosition(strat_name string) {
-  a.rwm.Lock()
-  defer a.rwm.Unlock()
-  delete(a.Positions, strat_name)
-}
-
-
 func (a *Asset) createPositionID(strat_name string) string {
   t := a.Time.Format(time.DateTime)
   position_id := "symbol[" + a.Symbol + "]_strat[" + strat_name + "]_time[" + t + "]"
   return position_id
+}
+
+
+func (a *Asset) initiatePositionObject(strat_name string, order_type string, side string, order_id string, trigger_time time.Time) {
+  a.Rwm.Lock()
+  a.Positions[strat_name] = NewPosition(a.Symbol)
+  a.Rwm.Unlock()
+  a.Mutex.Lock()
+  defer a.Mutex.Unlock()
+  if a.Positions[strat_name] == nil {
+    log.Fatal("Position object is nil for symbol: ", a.Symbol)
+  }
+  pos := a.Positions[strat_name]
+  pos.Rwm.Lock()
+  defer pos.Rwm.Unlock()
+  pos.Symbol = a.Symbol
+  pos.AssetClass = a.AssetClass
+  pos.StratName = strat_name
+  pos.PositionID = order_id
+  pos.OpenSide = side
+  pos.OpenOrderType = order_type
+  pos.OpenTriggerPrice = a.C[constant.WINDOW_SIZE-1]
+  pos.OpenTriggerTime = trigger_time
+  pos.OpenPriceTime = a.Time
+  pos.OpenPriceReceivedTime = a.ReceivedTime
+}
+
+
+func (a *Asset) RemovePosition(strat_name string) {
+  a.Rwm.Lock()
+  defer a.Rwm.Unlock()
+  delete(a.Positions, strat_name)
 }
 
 
@@ -178,32 +221,22 @@ func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, sy
 }
 
 
-func (a *Asset) initiatePositionObject(strat_name string, order_type string, side string, order_id string, trigger_time time.Time) {
-  a.rwm.Lock()
-  a.Positions[strat_name] = NewPosition(a.Symbol)
-  a.rwm.Unlock()
-  a.mutex.Lock()
-  defer a.mutex.Unlock()
-  if a.Positions[strat_name] == nil {
-    log.Fatal("Position object is nil for symbol: ", a.Symbol)
-  }
-  pos := a.Positions[strat_name]
-  pos.rwm.Lock()
-  defer pos.rwm.Unlock()
-  pos.Symbol = a.Symbol
-  pos.AssetClass = a.AssetClass
-  pos.StratName = strat_name
-  pos.PositionID = order_id
-  pos.OpenSide = side
-  pos.OpenOrderType = order_type
-  pos.OpenTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
-  pos.OpenTriggerTime = trigger_time
-  pos.OpenPriceTime = a.Time
-  pos.OpenPriceReceivedTime = a.ReceivedTime
+// Methods below this point are for being called from strategy functions
+
+
+func (a *Asset) IndexSingle(arr *[]float64, i int) (num float64) {
+  num = (*arr)[constant.WINDOW_SIZE - 1 - i]
+  return
 }
 
 
-func (a *Asset) OpenPosition(side string, order_type string, strat_name string) {
+func (a *Asset) IndexArray(arr *[]float64, from int, to int) (slice []float64) {
+  slice = (*arr)[(constant.WINDOW_SIZE - 1 - to):(constant.WINDOW_SIZE - from)]
+  return
+}
+
+
+func (a *Asset) Open(side string, order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
   if _, ok := a.Positions[strat_name]; ok {
     return
@@ -216,13 +249,13 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
     log.Println("[ INFO ]\tOpen cancelled due trigger time diff too large", a.Symbol)
     return
   }
-  if NNP.flag == true {
+  if NNP.Flag == true {
     return
   }
-  last_close := a.Close[constant.WINDOW_SIZE-1]
+  last_close := a.C[constant.WINDOW_SIZE-1]
   symbol := a.Symbol
   order_id := a.createPositionID(strat_name)
-  a.mutex.Unlock()
+  a.Mutex.Unlock()
   a.initiatePositionObject(strat_name, order_type, side, order_id, trigger_time)
   err := a.sendOpenOrder(order_type, order_id, symbol, last_close)
   if err != nil {
@@ -230,16 +263,17 @@ func (a *Asset) OpenPosition(side string, order_type string, strat_name string) 
     a.RemovePosition(strat_name)
     return
   }
-  a.mutex.Lock()
+  a.Mutex.Lock()
 }
 
 
-func (a *Asset) ClosePosition(order_type string, strat_name string) {
+func (a *Asset) Close(order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
   pos := a.Positions[strat_name]
+  pos.Rwm.Lock()
   if pos.CloseOrderPending || pos.OpenOrderPending {
     return
   }
@@ -247,17 +281,51 @@ func (a *Asset) ClosePosition(order_type string, strat_name string) {
   symbol := pos.Symbol
   qty := pos.Qty
   order_id := pos.PositionID
-  pos.rwm.Lock()
   pos.CloseOrderPending = true
   pos.CloseTriggerTime = trigger_time
   pos.CloseOrderType = order_type
-  pos.CloseTriggerPrice = a.Close[constant.WINDOW_SIZE-1]
+  pos.CloseTriggerPrice = a.C[constant.WINDOW_SIZE-1]
   pos.ClosePriceTime = a.Time
   pos.ClosePriceReceivedTime = a.ReceivedTime
-  pos.rwm.Unlock()
+  pos.Rwm.Unlock()
   err := a.sendCloseOrder(open_side, order_type, order_id, symbol, qty)
   if err != nil {
     handlelog.Error(err, symbol, order_id)
     return
   }
+}
+
+
+func (a *Asset) StopLoss(percent float64, strat_name string) {
+  if _, ok := a.Positions[strat_name]; !ok {
+    return
+  }
+  fill_price := (*a).Positions[strat_name].OpenFilledAvgPrice
+  if fill_price == 0 {
+    return
+  }
+  dev := (fill_price / a.IndexSingle(&a.C, 0) - 1) * 100
+  if dev < (percent * -1) {
+    a.Close("IOC", strat_name)
+  }
+}
+
+
+func (a *Asset) TakeProfit(percent float64, strat_name string) {
+  if _, ok := a.Positions[strat_name]; !ok {
+    return
+  }
+  fill_price := (*a).Positions[strat_name].OpenFilledAvgPrice
+  if fill_price == 0 {
+    return
+  }
+  dev := ( fill_price / a.IndexSingle(&a.C, 0) - 1) * 100
+  if dev > percent {
+    a.Close("IOC", strat_name)
+  }
+}
+
+
+func (a *Asset) TrailingStop() {
+  panic("TrailingStop not implemented")
 }

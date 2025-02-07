@@ -4,73 +4,110 @@ package src
 import (
   // "math/rand"
 
-  "github.com/Kjellemann1/AlgoTrader-Go/src/indicator"
+  "github.com/markcheno/go-talib"
 )
 
 
-func (a *Asset) testingRSI1() {
-  a.mutex.Lock()
-  strat_name := "testingRSI1_1"
-  rsi := indicator.RSI(a.Close, 14)
-  if rsi[len(rsi)-1] > 80 {
-    a.OpenPosition("long", "IOC", strat_name)
+func (a *Asset) testRSI() {
+  a.Mutex.Lock()
+  strat_name := "test2_RSI"
+  rsi := talib.Rsi(a.C[:], 14)
+  if a.IndexSingle(&rsi, 0) > 70 {
+    a.Open("long", "IOC", strat_name)
   }
-  if rsi[len(rsi)-1] < 20 {
-    a.ClosePosition("IOC", strat_name)
+  if rsi[len(rsi)-1] < 30 {
+    a.Close("IOC", strat_name)
   }
-  a.mutex.Unlock()
+  a.StopLoss(5, strat_name)
+  a.TakeProfit(5, strat_name)
+  a.Mutex.Unlock()
 }
 
 
-func (a *Asset) testingRSI2() {
-  a.mutex.Lock()
-  strat_name := "testingRSI2_1"
-  rsi := indicator.RSI(a.Close, 14)
-  if rsi[len(rsi)-1] > 85 {
-    a.OpenPosition("long", "IOC", strat_name)
+func (a *Asset) testSMA() {
+  a.Mutex.Lock()
+  strat_name := "test2_SMA"
+  fast := talib.Sma(a.C[:], 20)
+  slow := talib.Sma(a.C[:], 75)
+  if a.IndexSingle(&fast, 0) > a.IndexSingle(&slow, 0) {
+    if a.IndexSingle(&fast, 1) < a.IndexSingle(&slow, 1) {
+      if a.IndexSingle(&fast, 2) < a.IndexSingle(&slow, 2) {
+        if a.IndexSingle(&fast, 3) < a.IndexSingle(&slow, 3) {
+          a.Open("long", "IOC", strat_name)
+        }
+      }
+    }
   }
-  if rsi[len(rsi)-1] < 15 {
-    a.ClosePosition("IOC", strat_name)
+  if a.IndexSingle(&fast, 0) < a.IndexSingle(&slow, 0) {
+    if a.IndexSingle(&fast, 1) > a.IndexSingle(&slow, 1) {
+      if a.IndexSingle(&fast, 2) > a.IndexSingle(&slow, 2) {
+        if a.IndexSingle(&fast, 3) > a.IndexSingle(&slow, 3) {
+          a.Close("IOC", strat_name)
+        }
+      }
+    }
   }
-  a.mutex.Unlock()
+  a.StopLoss(5, strat_name)
+  a.TakeProfit(5, strat_name)
+  a.Mutex.Unlock()
 }
 
 
-func (a *Asset) testingRSI3() {
-  a.mutex.Lock()
-  strat_name := "testingRSI3_1"
-  rsi := indicator.RSI(a.Close, 14)
-  if rsi[len(rsi)-1] > 90 {
-    a.OpenPosition("long", "IOC", strat_name)
+func (a *Asset) testBBands() {
+  a.Mutex.Lock()
+  strat_name := "test2_BBands"
+  upper, _, lower := talib.BBands(a.C[:], 20, 2, 2, 0)
+  currentPrice := a.IndexSingle(&a.C, 0)
+  if currentPrice < a.IndexSingle(&lower, 0) {
+    a.Open("long", "IOC", strat_name)
   }
-  if rsi[len(rsi)-1] < 10 {
-    a.ClosePosition("IOC", strat_name)
+  if currentPrice > a.IndexSingle(&upper, 0) {
+    a.Close("IOC", strat_name)
   }
-  a.mutex.Unlock()
+  a.StopLoss(5, strat_name)
+  a.TakeProfit(5, strat_name)
+  a.Mutex.Unlock()
 }
 
 
-// func (a *Asset) testingRand1() {
-//   a.mutex.Lock()
-//   strat_name := "testingRand1_1"
+func (a *Asset) testMomentum() {
+  a.Mutex.Lock()
+  strat_name := "test2_Momentum"
+  momentum := a.IndexSingle(&a.C, 0) - a.IndexSingle(&a.C, 5)
+  threshold := 1.0
+  if momentum > threshold {
+    a.Open("long", "IOC", strat_name)
+  }
+  if momentum < -threshold {
+    a.Close("IOC", strat_name)
+  }
+  a.StopLoss(5, strat_name)
+  a.TakeProfit(5, strat_name)
+  a.Mutex.Unlock()
+}
+
+
+// func (a *Asset) testRand1() {
+//   a.Mutex.Lock()
+//   strat_name := "testRand1_2"
 //   num := rand.Intn(100)
 //   if num < 5 {
-//     a.OpenPosition("long", "IOC", strat_name)
+//     a.Open("long", "IOC", strat_name)
 //   } else if num >= 95 {
-//     a.ClosePosition("IOC", strat_name)
+//     a.Close("IOC", strat_name)
 //   }
-//   a.mutex.Unlock()
+//   a.Mutex.Unlock()
 // }
-
-
-// func (a *Asset) testingRand2() {
-//   a.mutex.Lock()
-//   strat_name := "testingRand2_1"
+//
+//
+// func (a *Asset) testRand2() {
+//   a.Mutex.Lock()
+//   strat_name := "testRand2_2"
 //   num := rand.Intn(100)
 //   if num < 5 {
-//     a.OpenPosition("long", "IOC", strat_name)
+//     a.Open("long", "IOC", strat_name)
 //   } else if num >= 95 {
-//     a.ClosePosition("IOC", strat_name)
+//     a.Close("IOC", strat_name)
 //   }
-//   a.mutex.Unlock()
+//   a.Mutex.Unlock()
 // }

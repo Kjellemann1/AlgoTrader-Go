@@ -15,8 +15,6 @@ import (
 
 func urlHistBars(asset_class string, page_token string) string {
   t := time.Now().UTC().AddDate(0, 0, -constant.HIST_DAYS).Format("2006-01-02T15:04:05Z")
-  // fmt.Println(strings.Replace(strings.Join(constant.CRYPTO_LIST, "%2C"), "/", "%2F", len(constant.CRYPTO_LIST)))
-  // panic("")
   var url string
   switch asset_class {
     case "stock":

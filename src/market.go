@@ -1,11 +1,4 @@
 
-/*
-  Each Market instance is connected to a websocket for an exclusive asset_class. It listens for price updates from the
-  market, and updates the symbols with this information. It uses a worker pool with the same size as the number of symbols
-  to handle the updates concurrently. This is especially useful on bar updates, as the market can send updates for all symbols
-  at the same time.
-*/
-
 package src
 
 import (

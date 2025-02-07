@@ -10,7 +10,7 @@ var NNP = NewNoNewPositions()
 
 
 type NoNewPositions struct {
-  flag bool
+  Flag bool
   m map[string]bool
   rwm sync.RWMutex
 }
@@ -20,7 +20,7 @@ func (n *NoNewPositions) NoNewPositionsTrue(id string) {
   n.rwm.Lock()
   defer n.rwm.Unlock()
   n.m[id] = true
-  n.flag = true
+  n.Flag = true
 }
 
 
@@ -33,13 +33,13 @@ func (n *NoNewPositions) NoNewPositionsFalse(id string) {
       return
     }
   }
-  n.flag = false
+  n.Flag = false
 }
 
 
 func NewNoNewPositions() (n *NoNewPositions) {
   n = &NoNewPositions{
-    flag: false,
+    Flag: false,
     m: make(map[string]bool),
   }
   n.m["Account.listen"] = false

@@ -35,16 +35,18 @@ type Query struct {
   TrailingStop      float64
   BadForAnalysis    bool
   TrailingStopPrice float64
+  NCloseOrders      int8
 }
 
 
 type Database struct {
-  conn                 *sql.DB
-  db_chan              chan *Query
-  insert_trade         *sql.Stmt
-  insert_position      *sql.Stmt
-  delete_position      *sql.Stmt
-  update_trailing_stop *sql.Stmt
+  conn                  *sql.DB
+  db_chan               chan *Query
+  insert_trade          *sql.Stmt
+  insert_position       *sql.Stmt
+  delete_position       *sql.Stmt
+  update_trailing_stop  *sql.Stmt
+  update_n_close_orders *sql.Stmt
 }
 
 
@@ -67,8 +69,9 @@ func (db *Database) prepQueries() error {
       trigger_price,
       fill_time,
       filled_avg_price,
-      bad_for_analysis
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      bad_for_analysis,
+      n_close_orders
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
   `)
   if err != nil {
     return err
@@ -89,8 +92,9 @@ func (db *Database) prepQueries() error {
       fill_time,
       filled_avg_price,
       trailing_stop,
-      bad_for_analysis
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      bad_for_analysis,
+      n_close_orders
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
   `)
   if err != nil {
     return err
@@ -103,6 +107,12 @@ func (db *Database) prepQueries() error {
   }
   db.update_trailing_stop, err = db.conn.Prepare(`
     UPDATE positions SET trailing_stop = ? WHERE symbol = ? AND strat_name = ?;
+  `)
+  if err != nil {
+    return err
+  }
+  db.update_n_close_orders, err = db.conn.Prepare(`
+    UPDATE positions SET n_close_orders = ? WHERE symbol = ? AND strat_name = ?;
   `)
   if err != nil {
     return err
@@ -179,6 +189,7 @@ func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
     query.FillTime,
     query.FilledAvgPrice,
     query.BadForAnalysis,
+    query.NCloseOrders,
   )
   if err != nil {
     db.errorHandler(err, "insertTrade", response, query, retries, &backoff_sec)
@@ -203,6 +214,7 @@ func (db *Database) insertPosition(query *Query, backoff_sec int, retries int) {
     query.FilledAvgPrice,
     query.TrailingStop,
     query.BadForAnalysis,
+    query.NCloseOrders,
   )
   if err != nil {
     db.errorHandler(err, "insertPosition", response, query, retries, &backoff_sec)
@@ -219,11 +231,20 @@ func (db *Database) deletePosition(query *Query, backoff_sec int, retries int) {
 
 
 func (db *Database) updateTrailingStop(query *Query, backoff_sec int, retries int) {
-  response, err := db.update_trailing_stop.Exec(query.Symbol, query.StratName, query.TrailingStopPrice)
+  response, err := db.update_trailing_stop.Exec(query.TrailingStopPrice, query.Symbol, query.StratName)
   if err != nil {
     db.errorHandler(err, "updateTrailingStop", response, query, retries, &backoff_sec)
   }
 }
+
+
+func (db *Database) updateNCloseOrders(query *Query, backoff_sec int, retries int) {
+  response, err := db.update_n_close_orders.Exec(query.NCloseOrders, query.Symbol, query.StratName)
+  if err != nil {
+    db.errorHandler(err, "updateNCloseOrders", response, query, retries, &backoff_sec)
+  }
+}
+
 
 
 func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
@@ -233,7 +254,11 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
       db.insertPosition(query, backoff_sec, retries)
     case "close":
       db.insertTrade(query, backoff_sec, retries)
-      db.deletePosition(query, backoff_sec, retries)
+      if !query.Qty.IsZero() {
+        db.updateNCloseOrders(query, backoff_sec, retries)
+      } else {
+        db.deletePosition(query, backoff_sec, retries)
+      }
     case "update":
       db.updateTrailingStop(query, backoff_sec, retries)
     default:

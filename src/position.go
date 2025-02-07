@@ -19,9 +19,9 @@ type Position struct {
   StratName              string
   Qty                    decimal.Decimal
   BadForAnalysis         bool
-  PositionID             string  // The position id is primarily used to track the order status. 
-                                 // It contains the strategy name, which is used to identify the strategy that
-                                 // placed the order when getting order updates from the broker.
+  PositionID             string  // The position id is primarily used to tie order updates to the correct
+                                 // position object. It contains the strategy name which is grepped for on order
+                                 // updates, which together with the symbol is unique to the position.
   OpenOrderPending       bool
   OpenTriggerTime        time.Time 
   OpenSide               string
@@ -34,7 +34,6 @@ type Position struct {
 
   CloseOrderPending      bool
   CloseOrderType         string
-  CloseFilledQty         decimal.Decimal  // What is this used for? Redundant? Might be for partial closing of positions
   CloseTriggerTime       time.Time
   CloseTriggerPrice      float64
   CloseFillTime          time.Time
@@ -42,11 +41,12 @@ type Position struct {
   ClosePriceTime         time.Time
   ClosePriceReceivedTime time.Time
 
-  rwm                    sync.RWMutex
+  NCloseOrders           int8
+
+  Rwm                    sync.RWMutex
 }
 
 
-// Constructor for Position
 func NewPosition(symbol string) *Position {
   zero, _ := decimal.NewFromString("0")
   p := &Position{
@@ -81,7 +81,6 @@ func (p *Position) LogOpen(strat_name string) *Query {
     BadForAnalysis: p.BadForAnalysis,
     TrailingStopPrice: 0.0, // TODO: Change this when trailing stop is implemented
   }
-  // TODO: Implement log if buffer is full
   return query
 }
 
@@ -96,6 +95,7 @@ func (p *Position) LogClose(strat_name string) *Query {
   } else {
     side = "buy"
   }
+  p.NCloseOrders++
   query := &Query{
     Action: "close",
     PositionID: p.PositionID,
@@ -112,7 +112,7 @@ func (p *Position) LogClose(strat_name string) *Query {
     FillTime: p.CloseFillTime,
     FilledAvgPrice: p.CloseFilledAvgPrice,
     BadForAnalysis: p.BadForAnalysis,
+    NCloseOrders: p.NCloseOrders,
   }
-  // TODO: Implement log if buffer is full
   return query
 }
