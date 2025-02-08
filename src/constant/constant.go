@@ -74,7 +74,6 @@ var STOCK_LIST = []string{
 }
 
 
-
 var CRYPTO_LIST = []string{
   "BTC/USD",
   "LTC/USD",

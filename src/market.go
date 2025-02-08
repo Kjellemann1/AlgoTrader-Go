@@ -19,6 +19,12 @@ import (
 )
 
 
+type MarketMessage struct {
+  message []byte
+  received_time time.Time
+}
+
+
 type Market struct {
   asset_class       string
   assets            map[string]*Asset
@@ -28,9 +34,27 @@ type Market struct {
 }
 
 
-type MarketMessage struct {
-  message []byte
-  received_time time.Time
+// Constructor
+func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Market) {
+  // Check that all symbols are in the assets map
+  var symbol_list_ptr *[]string
+  if asset_class == "stock" {
+    symbol_list_ptr = &constant.STOCK_LIST
+  } else if asset_class == "crypto" {
+    symbol_list_ptr = &constant.CRYPTO_LIST
+  }
+  for _, symbol := range *symbol_list_ptr {
+    if _, ok := assets[symbol]; !ok {
+      handlelog.ErrorPanic(errors.New("Symbol not found in assets map"), "Symbol", symbol)
+    }
+  }
+  m = &Market{
+    asset_class: asset_class,
+    url: url,
+    assets: assets,
+    worker_pool_chan: make(chan MarketMessage, len(*symbol_list_ptr)),
+  }
+  return
 }
 
 
@@ -193,13 +217,42 @@ func (m *Market) connect(initial *bool) error {
 }
 
 
-// Listens for market updates from the websocket connection
-func (m *Market) listen(n_workers int) error {
+func (m *Market) PingPong() {
+  if err := m.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+    handlelog.Warning(err)
+  }
+  m.conn.SetPongHandler(func(string) error {
+    m.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+    log.Println("[ PONG ]\t Market")
+    return nil
+  })
+
+  go func() {
+    ticker := time.NewTicker(30 * time.Second)
+    defer ticker.Stop()
+    for {
+      select {
+      case <-ticker.C:
+        if err := m.conn.WriteControl(
+          websocket.PingMessage, []byte("ping"), 
+          time.Now().Add(5 * time.Second)); err != nil {
+          handlelog.Warning(err)
+          return
+        }
+        log.Println("[ PING ]\t Market")
+      }
+    }
+  }()
+}
+
+
+func (m *Market) listen() error {
+  defer m.conn.Close()
   wg := sync.WaitGroup{}
   defer wg.Wait()
+  n_workers := len(m.assets)
   m.initiateWorkerPool(n_workers, &wg)
-  ticker := time.NewTicker(20 * time.Second)
-  defer ticker.Stop()
+  defer close(m.worker_pool_chan)
   for {
     _, message, err := m.conn.ReadMessage()
     received_time := time.Now().UTC()
@@ -215,40 +268,16 @@ func (m *Market) listen(n_workers int) error {
         continue
       }
     }
+    m.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
     m.worker_pool_chan <- MarketMessage{message, received_time}
   }
 }
 
 
-// Constructor
-func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Market) {
-  // Check that all symbols are in the assets map
-  var symbol_list_ptr *[]string
-  if asset_class == "stock" {
-    symbol_list_ptr = &constant.STOCK_LIST
-  } else if asset_class == "crypto" {
-    symbol_list_ptr = &constant.CRYPTO_LIST
-  }
-  for _, symbol := range *symbol_list_ptr {
-    if _, ok := assets[symbol]; !ok {
-      handlelog.ErrorPanic(errors.New("Symbol not found in assets map"), "Symbol", symbol)
-    }
-  }
-  m = &Market{
-    asset_class: asset_class,
-    url: url,
-    assets: assets,
-    worker_pool_chan: make(chan MarketMessage, len(*symbol_list_ptr)),
-  }
-  return
-}
-
-
-// Run function
 func (m *Market) Start(wg *sync.WaitGroup) {
   defer wg.Done()
-  var backoff_sec int = 5
-  var retries int = 0
+  backoff_sec := 5
+  retries := 0
   initial := true
   for {
     err := m.connect(&initial)
@@ -266,7 +295,7 @@ func (m *Market) Start(wg *sync.WaitGroup) {
     }
     backoff_sec = 5
     retries = 0
-    m.listen(len(m.assets))
-    m.conn.Close()
+    m.PingPong()
+    m.listen()
   }
 }

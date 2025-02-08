@@ -20,6 +20,9 @@ func rollFloat(arr *[]float64, v float64) {
 
 
 func (a *Asset) fillMissingMinutes(t time.Time) {
+  if a.Time.IsZero() {
+    return
+  }
   missingMinutes := int(t.Sub(a.Time).Minutes()) -1
   if missingMinutes > 0 {
     for i := 0; i < missingMinutes; i++ {
@@ -74,10 +77,11 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
     L: make([]float64, constant.WINDOW_SIZE),
     C: make([]float64, constant.WINDOW_SIZE),
     strategies: []strategyFunc{
-      (*Asset).testRSI,
-      (*Asset).testSMA,
-      (*Asset).testBBands,
-      (*Asset).testMomentum,
+      (*Asset).testCool,
+      // (*Asset).testRSI,
+      // (*Asset).testSMA,
+      // (*Asset).testBBands,
+      // (*Asset).testMomentum,
       // (*Asset).testRSI1,
       // (*Asset).testRSI2,
       // (*Asset).testRSI3,
@@ -297,6 +301,7 @@ func (a *Asset) Close(order_type string, strat_name string) {
 
 
 func (a *Asset) StopLoss(percent float64, strat_name string) {
+  // TODO: Log if StopLoss triggered to db
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
@@ -307,11 +312,13 @@ func (a *Asset) StopLoss(percent float64, strat_name string) {
   dev := (fill_price / a.IndexSingle(&a.C, 0) - 1) * 100
   if dev < (percent * -1) {
     a.Close("IOC", strat_name)
+    log.Printf("[ INFO ]\tStopLoss\t%s\t%s", a.Symbol, strat_name)
   }
 }
 
 
 func (a *Asset) TakeProfit(percent float64, strat_name string) {
+  // TODO: Log if Take Profit triggered to db
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
@@ -322,6 +329,7 @@ func (a *Asset) TakeProfit(percent float64, strat_name string) {
   dev := ( fill_price / a.IndexSingle(&a.C, 0) - 1) * 100
   if dev > percent {
     a.Close("IOC", strat_name)
+    log.Printf("[ INFO ]\tTakeProfit\t%s\t%s", a.Symbol, strat_name)
   }
 }
 

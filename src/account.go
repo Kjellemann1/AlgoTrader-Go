@@ -30,8 +30,6 @@ func grepStratName(orderID string) (string, error) {
 }
 
 
-// Used to send order updates received in Account instance to MarketSocket instanc(es)
-// through the order_update channel. 
 type OrderUpdate struct {
   Event          string
   AssetClass     string
@@ -44,13 +42,56 @@ type OrderUpdate struct {
 }
 
 
-// Account is the main struct for handling order updates
 type Account struct {
   conn *websocket.Conn
   parser fastjson.Parser
   db_chan chan *Query
   assets map[string]map[string]*Asset
   // TODO stock and crypto cleared for shutdown
+}
+
+
+func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Account {
+  a := &Account{
+    parser: fastjson.Parser{},
+    assets: assets,
+    db_chan: db_chan,
+  }
+  return a
+}
+
+
+func (a *Account) onAuth(element *fastjson.Value) {
+  msg := string(element.Get("data").GetStringBytes("status"))
+  if msg == "authorized" {
+    log.Println("[ OK ]\tAuthenticated with account websocket")
+  } else {
+    log.Panicln("[ ERROR ]\tAuthorization with account websocket failed")
+  }
+}
+
+
+func (a *Account) messageHandler(message []byte) {
+  parsed_msg, err := a.parser.ParseBytes(message)
+  if err != nil {
+    log.Println("Error parsing json: ", err)
+    // TODO: Implement error handling
+  }
+  // Handle each message based on the "T" field
+  message_type := string(parsed_msg.GetStringBytes("stream"))
+  switch message_type {
+    case "authorization":
+      a.onAuth(parsed_msg)
+    case "trade_updates":
+      update := a.updateParser(parsed_msg)
+      if update == nil {
+        return
+      }
+      a.orderUpdateHandler(update)
+
+    case "listening":
+      log.Println("[ OK ]\tListening to order updates")
+  }
 }
 
 
@@ -99,41 +140,37 @@ func (a *Account) connect(initial *bool) (err error) {
 }
 
 
-func (a *Account) onAuth(element *fastjson.Value) {
-  msg := string(element.Get("data").GetStringBytes("status"))
-  if msg == "authorized" {
-    log.Println("[ OK ]\tAuthenticated with account websocket")
-  } else {
-    log.Panicln("[ ERROR ]\tAuthorization with account websocket failed")
+func (a *Account) PingPong() {
+  if err := a.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+    handlelog.Warning(err)
   }
-}
+  a.conn.SetPongHandler(func(string) error {
+    a.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+    log.Println("[ PONG ]\t Account")
+    return nil
+  })
 
-
-func (a *Account) messageHandler(message []byte) {
-  parsed_msg, err := a.parser.ParseBytes(message)
-  if err != nil {
-    log.Println("Error parsing json: ", err)
-    // TODO: Implement error handling
-  }
-  // Handle each message based on the "T" field
-  message_type := string(parsed_msg.GetStringBytes("stream"))
-  switch message_type {
-    case "authorization":
-      a.onAuth(parsed_msg)
-    case "trade_updates":
-      update := a.updateParser(parsed_msg)
-      if update == nil {
-        return
+  go func() {
+    ticker := time.NewTicker(30 * time.Second)
+    defer ticker.Stop()
+    for {
+      select {
+      case <-ticker.C:
+        if err := a.conn.WriteControl(
+          websocket.PingMessage, []byte("ping"), 
+          time.Now().Add(5 * time.Second)); err != nil {
+          handlelog.Warning(err)
+          return
+        }
+        log.Println("[ PING ]\t Account")
       }
-      a.orderUpdateHandler(update)
-
-    case "listening":
-      log.Println("[ OK ]\tListening to order updates")
-  }
+    }
+  }()
 }
 
 
 func (a *Account) listen() {
+  defer a.conn.Close()
   for {
     _, message, err := a.conn.ReadMessage()
     if err != nil {
@@ -173,24 +210,13 @@ func (a *Account) Start(wg *sync.WaitGroup) {
       retries++
       continue
     }
-    a.listen()
     backoff_sec = 5
     retries = 0
+    a.PingPong()
+    a.listen()
     // TODO: On reconnect, check that positions on the server are the same as locally
-    a.conn.Close()
+    //   -> Make sure we didn't miss any updates
   }
-
-}
-
-
-// Constructor
-func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Account {
-  a := &Account{
-    parser: fastjson.Parser{},
-    assets: assets,
-    db_chan: db_chan,
-  }
-  return a
 }
 
 

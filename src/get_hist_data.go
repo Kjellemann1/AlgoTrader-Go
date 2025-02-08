@@ -66,12 +66,10 @@ func makeRequest(asset_class string, page_token string) *fastjson.Value {
 func GetHistBars(assets map[string]*Asset, asset_class string) {
   var arr []*fastjson.Value
   page_token := "start"
-  var x int = 0
   for page_token != "" {
     parsed := makeRequest(asset_class, page_token)
     arr = append(arr, parsed.Get("bars"))
     page_token = string(parsed.GetStringBytes("next_page_token"))
-    x++
   }
   temp_time := time.Now().UTC()
   for _, bars := range arr {

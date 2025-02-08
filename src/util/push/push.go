@@ -1,4 +1,3 @@
-
 package push
 
 import (
@@ -9,7 +8,6 @@ import (
 
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
 )
-
 
 func push(message string, title string, prio int) {
   url := "https://api.pushover.net/1/messages.json"
@@ -46,21 +44,17 @@ func push(message string, title string, prio int) {
   }
 }
 
-
 func Info(message string) {
   push(message, "UPDATE", -1)
 }
-
 
 func Message(message string) {  // Change to 0
   push(message, "MESSAGE", 0)
 }
 
-
 func Warning(message string) {
   push(message, "WARNING", 0)  // Change to 1
 }
-
 
 func Error(message string) {
   push(message, "ERROR", 0)  // Change to 2

@@ -30,6 +30,7 @@ func Run() {
 
   var wg sync.WaitGroup
 
+
   // Database
   wg.Add(1)
   db := NewDatabase(db_chan)
