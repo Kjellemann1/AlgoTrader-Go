@@ -1,4 +1,3 @@
-
 package src
 
 import (
@@ -7,21 +6,42 @@ import (
   "github.com/markcheno/go-talib"
 )
 
-
 func (a *Asset) testCool() {
   a.Mutex.Lock()
   strat_name := "testCool_1"
-  rsi := talib.Rsi(a.C[:], 17)
-  if a.IndexSingle(&rsi, 0) < 30 {
-    if a.IndexSingle(&rsi, 1) < 30 {
-      a.Open("long", "IOC", strat_name)
+  long := 40.0
+  clo := 60.0
+  period := 14
+  rsi := talib.Rsi(a.C[:], period)
+  if a.I(&rsi, 0) < long {
+    if a.I(&rsi, 1) > long {
+      if a.I(&rsi, 2) > long {
+        a.Open("long", "IOC", strat_name)
+      }
+    }
+  } else if a.I(&rsi, 0) > clo {
+    if a.I(&rsi, 1) < clo {
+      if a.I(&rsi, 2) < clo {
+        a.Close("IOC", strat_name)
+      }
     }
   } 
-  a.StopLoss(5, strat_name)
-  a.TakeProfit(5, strat_name)
+  a.StopLoss(3, strat_name)
+  a.TakeProfit(2, strat_name)
   a.Mutex.Unlock()
 }
 
+// func (a *Asset) testRand() {
+//   a.Mutex.Lock()
+//   strat_name := "testRand"
+//   num := rand.Intn(100)
+//   if num < 5 {
+//     a.Open("long", "IOC", strat_name)
+//   }
+//   a.StopLoss(2, strat_name)
+//   a.TakeProfit(1.5, strat_name)
+//   a.Mutex.Unlock()
+// }
 
 // func (a *Asset) testRSI() {
 //   a.Mutex.Lock()
@@ -37,7 +57,6 @@ func (a *Asset) testCool() {
 //   a.TakeProfit(5, strat_name)
 //   a.Mutex.Unlock()
 // }
-//
 //
 // func (a *Asset) testSMA() {
 //   a.Mutex.Lock()
@@ -67,7 +86,6 @@ func (a *Asset) testCool() {
 //   a.Mutex.Unlock()
 // }
 //
-//
 // func (a *Asset) testBBands() {
 //   a.Mutex.Lock()
 //   strat_name := "test2_BBands"
@@ -84,7 +102,6 @@ func (a *Asset) testCool() {
 //   a.Mutex.Unlock()
 // }
 //
-//
 // func (a *Asset) testMomentum() {
 //   a.Mutex.Lock()
 //   strat_name := "test2_Momentum"
@@ -98,31 +115,5 @@ func (a *Asset) testCool() {
 //   }
 //   a.StopLoss(5, strat_name)
 //   a.TakeProfit(5, strat_name)
-//   a.Mutex.Unlock()
-// }
-//
-//
-// func (a *Asset) testRand1() {
-//   a.Mutex.Lock()
-//   strat_name := "testRand1_2"
-//   num := rand.Intn(100)
-//   if num < 5 {
-//     a.Open("long", "IOC", strat_name)
-//   } else if num >= 95 {
-//     a.Close("IOC", strat_name)
-//   }
-//   a.Mutex.Unlock()
-// }
-//
-//
-// func (a *Asset) testRand2() {
-//   a.Mutex.Lock()
-//   strat_name := "testRand2_2"
-//   num := rand.Intn(100)
-//   if num < 5 {
-//     a.Open("long", "IOC", strat_name)
-//   } else if num >= 95 {
-//     a.Close("IOC", strat_name)
-//   }
 //   a.Mutex.Unlock()
 // }

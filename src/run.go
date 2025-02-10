@@ -1,4 +1,3 @@
-
 package src
 
 import (
@@ -6,7 +5,6 @@ import (
 
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
 )
-
 
 // This is for all intents and purposes the main function
 func Run() {
@@ -29,7 +27,6 @@ func Run() {
   }
 
   var wg sync.WaitGroup
-
 
   // Database
   wg.Add(1)

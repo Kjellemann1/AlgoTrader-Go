@@ -1,4 +1,3 @@
-
 package src
 
 import (
@@ -18,12 +17,10 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
 )
 
-
 type MarketMessage struct {
   message []byte
   received_time time.Time
 }
-
 
 type Market struct {
   asset_class       string
@@ -33,8 +30,6 @@ type Market struct {
   worker_pool_chan  chan MarketMessage
 }
 
-
-// Constructor
 func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Market) {
   // Check that all symbols are in the assets map
   var symbol_list_ptr *[]string
@@ -57,7 +52,6 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Mar
   return
 }
 
-
 func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
   for i := 0; i < n_workers; i++ {
     wg.Add(1)
@@ -72,7 +66,6 @@ func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
     }()
   }
 }
-
 
 func (m *Market) onInitialMessages(element *fastjson.Value) {
   msg := string(element.GetStringBytes("msg"))
@@ -109,7 +102,6 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
   }
 }
 
-
 func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.Time) {
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
@@ -127,7 +119,6 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.T
   asset.CheckForSignal()
 }
 
-
 func (m *Market) onMarketTradeUpdate(element *fastjson.Value, received_time time.Time) {
   // TODO: Check within opening hours if stock
   symbol := string(element.GetStringBytes("S"))
@@ -137,7 +128,6 @@ func (m *Market) onMarketTradeUpdate(element *fastjson.Value, received_time time
   asset.UpdateWindowOnTrade(price, t, received_time)
   asset.CheckForSignal()
 }
-
 
 func (m *Market) messageHandler(mm MarketMessage) error {
   parser := fastjson.Parser{}
@@ -171,7 +161,6 @@ func (m *Market) messageHandler(mm MarketMessage) error {
   }
   return nil
 }
-
 
 func (m *Market) connect(initial *bool) error {
   // Connect to the websocket
@@ -216,35 +205,32 @@ func (m *Market) connect(initial *bool) error {
   return nil
 }
 
-
 func (m *Market) PingPong() {
   if err := m.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
     handlelog.Warning(err)
   }
   m.conn.SetPongHandler(func(string) error {
     m.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-    log.Println("[ PONG ]\t Market")
+    log.Println("[ Market ]\t<< PONG")
     return nil
   })
-
   go func() {
     ticker := time.NewTicker(30 * time.Second)
     defer ticker.Stop()
     for {
       select {
       case <-ticker.C:
-        if err := m.conn.WriteControl(
-          websocket.PingMessage, []byte("ping"), 
-          time.Now().Add(5 * time.Second)); err != nil {
+        if err := m.conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5 * time.Second)); err != nil {
           handlelog.Warning(err)
+          m.conn.Close()
           return
+        } else {
+          log.Println("[ Market ]\tPING >>")
         }
-        log.Println("[ PING ]\t Market")
       }
     }
   }()
 }
-
 
 func (m *Market) listen() error {
   defer m.conn.Close()
@@ -272,7 +258,6 @@ func (m *Market) listen() error {
     m.worker_pool_chan <- MarketMessage{message, received_time}
   }
 }
-
 
 func (m *Market) Start(wg *sync.WaitGroup) {
   defer wg.Done()

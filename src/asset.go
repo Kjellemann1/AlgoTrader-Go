@@ -1,4 +1,3 @@
-
 package src
 
 import (
@@ -11,13 +10,11 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
 )
 
-
 // Moves each element one step to the left, and inserts the new value at the tail.
 func rollFloat(arr *[]float64, v float64) {
   copy((*arr)[:constant.WINDOW_SIZE-1], (*arr)[1:])
   (*arr)[constant.WINDOW_SIZE-1] = v
 }
-
 
 func (a *Asset) fillMissingMinutes(t time.Time) {
   if a.Time.IsZero() {
@@ -39,9 +36,7 @@ func (a *Asset) fillMissingMinutes(t time.Time) {
   }
 }
 
-
 type strategyFunc func(*Asset)
-
 
 type Asset struct {
   Symbol            string
@@ -64,7 +59,6 @@ type Asset struct {
   Mutex             sync.Mutex
 }
 
-
 func NewAsset(asset_class string, symbol string) (a *Asset) {
   a = &Asset{
     lastCloseIsTrade: false,
@@ -77,7 +71,8 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
     L: make([]float64, constant.WINDOW_SIZE),
     C: make([]float64, constant.WINDOW_SIZE),
     strategies: []strategyFunc{
-      (*Asset).testCool,
+      // (*Asset).testCool,
+      // (*Asset).testRand,
       // (*Asset).testRSI,
       // (*Asset).testSMA,
       // (*Asset).testBBands,
@@ -90,7 +85,6 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
   a.StartStrategies()
   return
 }
-
 
 func (a *Asset) StartStrategies() {
   n := len(a.strategies)
@@ -105,7 +99,6 @@ func (a *Asset) StartStrategies() {
   }
 }
 
-
 func (a *Asset) CheckForSignal() {
   for i := range a.channels {
     if i >= 0 && i < len(a.channels) {
@@ -113,7 +106,6 @@ func (a *Asset) CheckForSignal() {
     }
   }
 }
-
 
 func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t time.Time, received_time time.Time) {
   a.Rwm.Lock()
@@ -133,7 +125,6 @@ func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t 
   a.lastCloseIsTrade = false
 }
 
-
 func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
@@ -147,7 +138,6 @@ func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.T
   a.lastCloseIsTrade = true
 }
 
-
 func (a *Asset) SumPosQtyEqAssetQty() bool {
   count, _ := decimal.NewFromString("0")
   for _, val := range a.Positions {
@@ -160,13 +150,11 @@ func (a *Asset) SumPosQtyEqAssetQty() bool {
   }
 }
 
-
 func (a *Asset) createPositionID(strat_name string) string {
   t := a.Time.Format(time.DateTime)
   position_id := "symbol[" + a.Symbol + "]_strat[" + strat_name + "]_time[" + t + "]"
   return position_id
 }
-
 
 func (a *Asset) initiatePositionObject(strat_name string, order_type string, side string, order_id string, trigger_time time.Time) {
   a.Rwm.Lock()
@@ -192,13 +180,11 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
   pos.OpenPriceReceivedTime = a.ReceivedTime
 }
 
-
 func (a *Asset) RemovePosition(strat_name string) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
   delete(a.Positions, strat_name)
 }
-
 
 func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string, last_close float64) (err error) {
   switch order_type {
@@ -207,7 +193,6 @@ func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string,
   }
   return
 }
-
 
 func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, symbol string, qty decimal.Decimal) (err error) {
   var side string
@@ -224,21 +209,17 @@ func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, sy
   return
 }
 
-
 // Methods below this point are for being called from strategy functions
 
-
-func (a *Asset) IndexSingle(arr *[]float64, i int) (num float64) {
+func (a *Asset) I(arr *[]float64, i int) (num float64) {
   num = (*arr)[constant.WINDOW_SIZE - 1 - i]
   return
 }
-
 
 func (a *Asset) IndexArray(arr *[]float64, from int, to int) (slice []float64) {
   slice = (*arr)[(constant.WINDOW_SIZE - 1 - to):(constant.WINDOW_SIZE - from)]
   return
 }
-
 
 func (a *Asset) Open(side string, order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
@@ -270,7 +251,6 @@ func (a *Asset) Open(side string, order_type string, strat_name string) {
   a.Mutex.Lock()
 }
 
-
 func (a *Asset) Close(order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
   if _, ok := a.Positions[strat_name]; !ok {
@@ -299,40 +279,37 @@ func (a *Asset) Close(order_type string, strat_name string) {
   }
 }
 
-
 func (a *Asset) StopLoss(percent float64, strat_name string) {
   // TODO: Log if StopLoss triggered to db
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
-  fill_price := (*a).Positions[strat_name].OpenFilledAvgPrice
+  fill_price := a.Positions[strat_name].OpenFilledAvgPrice
   if fill_price == 0 {
     return
   }
-  dev := (fill_price / a.IndexSingle(&a.C, 0) - 1) * 100
+  dev := (fill_price / a.I(&a.C, 0) - 1) * 100
   if dev < (percent * -1) {
     a.Close("IOC", strat_name)
     log.Printf("[ INFO ]\tStopLoss\t%s\t%s", a.Symbol, strat_name)
   }
 }
 
-
 func (a *Asset) TakeProfit(percent float64, strat_name string) {
   // TODO: Log if Take Profit triggered to db
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
-  fill_price := (*a).Positions[strat_name].OpenFilledAvgPrice
+  fill_price := a.Positions[strat_name].OpenFilledAvgPrice
   if fill_price == 0 {
     return
   }
-  dev := ( fill_price / a.IndexSingle(&a.C, 0) - 1) * 100
+  dev := (fill_price / a.I(&a.C, 0) - 1) * 100
   if dev > percent {
     a.Close("IOC", strat_name)
     log.Printf("[ INFO ]\tTakeProfit\t%s\t%s", a.Symbol, strat_name)
   }
 }
-
 
 func (a *Asset) TrailingStop() {
   panic("TrailingStop not implemented")

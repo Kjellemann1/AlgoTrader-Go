@@ -1,4 +1,3 @@
-
 package src
 
 import (
@@ -18,18 +17,6 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
 )
 
-
-func grepStratName(orderID string) (string, error) {
-  pattern := `strat\[(.*?)\]`
-  re := regexp.MustCompile(pattern)
-  match := re.FindStringSubmatch(orderID)
-  if match != nil && len(match) > 1 {
-    return match[1], nil
-  }
-  return "", errors.New("")
-}
-
-
 type OrderUpdate struct {
   Event          string
   AssetClass     string
@@ -41,7 +28,6 @@ type OrderUpdate struct {
   FilledAvgPrice *float64
 }
 
-
 type Account struct {
   conn *websocket.Conn
   parser fastjson.Parser
@@ -49,7 +35,6 @@ type Account struct {
   assets map[string]map[string]*Asset
   // TODO stock and crypto cleared for shutdown
 }
-
 
 func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Account {
   a := &Account{
@@ -60,7 +45,6 @@ func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Accou
   return a
 }
 
-
 func (a *Account) onAuth(element *fastjson.Value) {
   msg := string(element.Get("data").GetStringBytes("status"))
   if msg == "authorized" {
@@ -69,7 +53,6 @@ func (a *Account) onAuth(element *fastjson.Value) {
     log.Panicln("[ ERROR ]\tAuthorization with account websocket failed")
   }
 }
-
 
 func (a *Account) messageHandler(message []byte) {
   parsed_msg, err := a.parser.ParseBytes(message)
@@ -83,7 +66,7 @@ func (a *Account) messageHandler(message []byte) {
     case "authorization":
       a.onAuth(parsed_msg)
     case "trade_updates":
-      update := a.updateParser(parsed_msg)
+      update := a.updateParser(&ParsedMessage{parsed_msg})
       if update == nil {
         return
       }
@@ -93,7 +76,6 @@ func (a *Account) messageHandler(message []byte) {
       log.Println("[ OK ]\tListening to order updates")
   }
 }
-
 
 func (a *Account) connect(initial *bool) (err error) {
   conn, response, err := websocket.DefaultDialer.Dial("wss://paper-api.alpaca.markets/stream", nil)
@@ -139,14 +121,13 @@ func (a *Account) connect(initial *bool) (err error) {
   return
 }
 
-
 func (a *Account) PingPong() {
   if err := a.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
     handlelog.Warning(err)
   }
   a.conn.SetPongHandler(func(string) error {
     a.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-    log.Println("[ PONG ]\t Account")
+    log.Println("[ Account ]\t<< PONG")
     return nil
   })
 
@@ -156,18 +137,16 @@ func (a *Account) PingPong() {
     for {
       select {
       case <-ticker.C:
-        if err := a.conn.WriteControl(
-          websocket.PingMessage, []byte("ping"), 
-          time.Now().Add(5 * time.Second)); err != nil {
-          handlelog.Warning(err)
+        if err := a.conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5 * time.Second)); err != nil { handlelog.Warning(err)
+          a.conn.Close()
           return
+        } else {
+          log.Println("[ Account ]\tPING >>")
         }
-        log.Println("[ PING ]\t Account")
       }
     }
   }()
 }
-
 
 func (a *Account) listen() {
   defer a.conn.Close()
@@ -189,7 +168,6 @@ func (a *Account) listen() {
     a.messageHandler(message)
   }
 }
-
 
 func (a *Account) Start(wg *sync.WaitGroup) {
   defer wg.Done()
@@ -214,11 +192,12 @@ func (a *Account) Start(wg *sync.WaitGroup) {
     retries = 0
     a.PingPong()
     a.listen()
-    // TODO: On reconnect, check that positions on the server are the same as locally
-    //   -> Make sure we didn't miss any updates
+    // TODO: On reconnect:
+    //   -> Check that positions on the server are the same as locally
+    //     -> Make sure we didn't miss any updates
+    //   -> Make sure there are no panics on reconnect
   }
 }
-
 
 func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
   a.Rwm.Lock()
@@ -237,109 +216,154 @@ func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
   }
 }
 
+type ParsedMessage struct {
+  *fastjson.Value
+}
 
-func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
-  // Extract event. Shutdown if nil
-  event := parsed_msg.Get("data").GetStringBytes("event")
-  if event == nil {
-    handlelog.Error(
-      errors.New("EVENT NOT IN TRADE UPDATE"), "Parsed message", parsed_msg,
-      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+func (p *ParsedMessage) handleNil(id string, shutdown bool) {
+    if shutdown {
+      handlelog.Error(
+        errors.New(fmt.Sprintf("%s not in trade update", id)),
+        "ID", id, "Parsed message", p.Value,
+        "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+      )
+      order.CloseAllPositions(2, 0)
+      log.Panicln("SHUTTING DOWN")
+    }
+    handlelog.Warning(
+      errors.New(fmt.Sprintf("%s not in trade update", id)),
+      "ID", id, "Parsed message", p.Value,
     )
-    order.CloseAllPositions(2, 0)
-    log.Panicln("SHUTTING DOWN")
+}
+
+func (p *ParsedMessage) getData(id string, shutdown bool) string {
+  bytes := p.Get("data").GetStringBytes(id)
+  if bytes == nil {
+    p.handleNil(id, shutdown)
+    return ""
   }
-  event_str := string(event)
+  return string(bytes)
+}
+
+func (p *ParsedMessage) getOrder(id string, shutdown bool) string {
+  bytes := p.Get("data").Get("order").GetStringBytes(id)
+  if bytes == nil {
+    p.handleNil(id, shutdown)
+    return ""
+  }
+  return string(bytes)
+}
+
+func (p *ParsedMessage) grepStratName(orderID string) (string, error) {
+  pattern := `strat\[(.*?)\]`
+  re := regexp.MustCompile(pattern)
+  match := re.FindStringSubmatch(orderID)
+  if match != nil && len(match) > 1 {
+    return match[1], nil
+  }
+  return "", errors.New("")
+}
+
+func (p *ParsedMessage) getEvent() (event string, err error) {
   // Only handle fill, partial_fill and canceled events.
   // Other events are likely not relevant. https://alpaca.markets/docs/api-documentation/api-v2/streaming/
-  if event_str != "fill" && event_str != "partial_fill" && event_str != "canceled" {
-    return nil
+  event = p.getData("event", true)
+  if event != "fill" && event != "partial_fill" && event != "canceled" {
+    return "", errors.New("Event not fill, partial_fill or canceled")
   }
-  // Extract asset class. Shutdown if nil
-  asset_class := parsed_msg.Get("data").Get("order").GetStringBytes("asset_class")
-  if asset_class == nil {
-    handlelog.Error(
-      errors.New("ASSET CLASS NOT IN TRADE UPDATE"), "Parsed message", parsed_msg,
-      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
-    )
-    order.CloseAllPositions(2, 0)
-    log.Panicln("SHUTTING DOWN")
+  return
+}
+
+func (p *ParsedMessage) getAssetClass() (asset_class string) {
+  asset_class = p.getData("asset_class", true)
+  if asset_class == "us_equity" {
+    asset_class = "stock"
   }
-  asset_class_str := string(asset_class)
-  if asset_class_str == "us_equity" {
-    asset_class_str = "stock"
+  return
+}
+
+func (p *ParsedMessage) getSymbol() *string {
+  symbol := p.getData("symbol", true)
+  if symbol != "" {
+    return &symbol
   }
-  // Extract symbol, Return if nil
-  var symbol_ptr *string
-  symbol := parsed_msg.Get("data").Get("order").GetStringBytes("symbol")
-  if symbol == nil {
-    handlelog.Error(
-      errors.New("SYMBOL NOT IN TRADE UPDATE"), "Parsed message", parsed_msg,
-      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
-    )
-    order.CloseAllPositions(2, 0)
-    log.Panicln("SHUTTING DOWN")
+  return nil
+}
+
+func (p *ParsedMessage) getStratName() (string, error) {
+  id := p.getOrder("client_order_id", true)
+  strat_name, err := p.grepStratName(id)
+  return strat_name, err
+}
+
+func (p *ParsedMessage) getSide() *string {
+  side := p.getOrder("side", false)
+  if side != "" {
+    return &side
   }
-  symbol_str := string(symbol)
-  symbol_ptr = &symbol_str
-  // Extract PositionID. Return if nil
-  order_id := parsed_msg.Get("data").Get("order").GetStringBytes("client_order_id")  // client_order_id == PositionID
-  if order_id == nil {
-    handlelog.Warning(errors.New("Order id not found"), nil)
-    return nil
-  }
-  order_id_str := string(order_id)
-  // Grep strat_name from order id. Return if nil
-  strat_name, err := grepStratName(order_id_str)
-  if err != nil {
-    return nil
-  }
-  // Extract side
-  var side_ptr *string
-  side := parsed_msg.Get("data").Get("order").GetStringBytes("side")
-  if side != nil {
-    side_str := string(side)
-    side_ptr = &side_str
-  }
-  // Extract asset_qty
-  var asset_qty_ptr *decimal.Decimal
-  asset_qty := parsed_msg.Get("data").GetStringBytes("position_qty")
-  if asset_qty != nil {
+  return nil
+}
+
+func (p *ParsedMessage) getAssetQty() *decimal.Decimal {
+  asset_qty := p.getOrder("qty", false)
+  if asset_qty != "" {
     asset_qty_dec, err := decimal.NewFromString(string(asset_qty))
     if err != nil {
       handlelog.Error(err, "Asset qty", asset_qty, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
       order.CloseAllPositions(2, 0)
       log.Panicln("SHUTTING DOWN")
     }
-    asset_qty_ptr = &asset_qty_dec
+    return &asset_qty_dec
   }
-  // Extract fill_time
-  var fill_time_ptr *time.Time
-  fill_time_byte := parsed_msg.Get("data").Get("order").GetStringBytes("filled_at")
-  if fill_time_byte != nil {
-    fill_time, _ := time.Parse(time.RFC3339, string(fill_time_byte))
-    fill_time_ptr = &fill_time
-  }
-  // Extract filled_avg_price
-  var filled_avg_price_ptr *float64
-  filled_avg_price := parsed_msg.Get("data").Get("order").GetStringBytes("filled_avg_price")
-  if filled_avg_price != nil {
-    filled_avg_price_float, _ := strconv.ParseFloat(string(filled_avg_price), 8)
-    filled_avg_price_ptr = &filled_avg_price_float
-  }
-
-  return &OrderUpdate {
-    Event:            event_str,
-    AssetClass:       asset_class_str,
-    StratName:        strat_name,
-    Side:             side_ptr,
-    Symbol:           symbol_ptr,
-    AssetQty:         asset_qty_ptr,
-    FillTime:         fill_time_ptr,
-    FilledAvgPrice:   filled_avg_price_ptr,
-  }
+  return nil
 }
 
+func (p *ParsedMessage) getFillTime() *time.Time {
+  fill_time_str := p.getOrder("filled_at", false)
+  if fill_time_str != "" {
+    fill_time, err := time.Parse(time.RFC3339, fill_time_str)
+    if err != nil {
+      handlelog.Warning(err, "Fill time", fill_time_str)
+      return nil
+    }
+    return &fill_time
+  }
+  return nil
+}
+
+func (p *ParsedMessage) getFilledAvgPrice() *float64 {
+  filled_avg_price_str := p.getOrder("filled_avg_price", false)
+  if filled_avg_price_str != "" {
+    filled_avg_price, err := strconv.ParseFloat(filled_avg_price_str, 8)
+    if err != nil {
+      handlelog.Warning(err, "Filled avg price", filled_avg_price_str)
+      return nil
+    }
+    return &filled_avg_price
+  }
+  return nil
+}
+
+func (a *Account) updateParser(p *ParsedMessage) *OrderUpdate {
+  event, err := p.getEvent()
+  if err != nil {
+    return nil
+  }
+  strat_name, err := p.getStratName()
+  if err != nil {
+    return nil
+  }
+  return &OrderUpdate {
+    Event:            event,
+    StratName:        strat_name,
+    AssetClass:       p.getAssetClass(),
+    Side:             p.getSide(),
+    Symbol:           p.getSymbol(),
+    AssetQty:         p.getAssetQty(),
+    FillTime:         p.getFillTime(),
+    FilledAvgPrice:   p.getFilledAvgPrice(),
+  }
+}
 
 func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   var asset = a.assets[u.AssetClass][*u.Symbol]
