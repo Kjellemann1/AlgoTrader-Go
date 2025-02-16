@@ -211,7 +211,6 @@ func (m *Market) PingPong() {
   }
   m.conn.SetPongHandler(func(string) error {
     m.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-    log.Println("[ Market ]\t<< PONG")
     return nil
   })
   go func() {
@@ -225,7 +224,6 @@ func (m *Market) PingPong() {
           m.conn.Close()
           return
         } else {
-          log.Println("[ Market ]\tPING >>")
         }
       }
     }
@@ -282,5 +280,9 @@ func (m *Market) Start(wg *sync.WaitGroup) {
     retries = 0
     m.PingPong()
     m.listen()
+    err = m.conn.Close()
+    if err != nil {
+      handlelog.Error(errors.New("Could not close connection (after a.listen() call)"))
+    }
   }
 }

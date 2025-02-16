@@ -1,6 +1,7 @@
 package src
 
 import (
+  "log"
   "sync"
 
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
@@ -8,6 +9,7 @@ import (
 
 // This is for all intents and purposes the main function
 func Run() {
+  log.Println("Starting AlgoTrader")
   db_chan := make(chan *Query, len(constant.STOCK_LIST) + len(constant.CRYPTO_LIST))
 
   assets := make(map[string]map[string]*Asset)

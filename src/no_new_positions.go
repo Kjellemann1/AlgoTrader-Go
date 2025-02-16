@@ -1,13 +1,10 @@
-
 package src
 
 import (
   "sync"
 )
 
-
 var NNP = NewNoNewPositions()
-
 
 type NoNewPositions struct {
   Flag bool
@@ -15,14 +12,12 @@ type NoNewPositions struct {
   rwm sync.RWMutex
 }
 
-
 func (n *NoNewPositions) NoNewPositionsTrue(id string) {
   n.rwm.Lock()
   defer n.rwm.Unlock()
   n.m[id] = true
   n.Flag = true
 }
-
 
 func (n *NoNewPositions) NoNewPositionsFalse(id string) {
   n.rwm.Lock()
@@ -35,7 +30,6 @@ func (n *NoNewPositions) NoNewPositionsFalse(id string) {
   }
   n.Flag = false
 }
-
 
 func NewNoNewPositions() (n *NoNewPositions) {
   n = &NoNewPositions{

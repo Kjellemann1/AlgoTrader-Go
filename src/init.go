@@ -14,7 +14,7 @@ import (
 
 // Set up logging to both console and file.
 func init() {
-  name := "logs/" + time.Now().In(time.UTC).Format(time.DateTime) + ".log"
+  name := "/var/lib/mysql-files/algologs/" + time.Now().In(time.UTC).Format(time.DateTime) + ".log"
   logfile, err := os.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
   if err != nil {
     panic(err)

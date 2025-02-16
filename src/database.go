@@ -1,4 +1,3 @@
-
 package src
 
 import (
@@ -15,7 +14,6 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
 )
-
 
 type Query struct {
   Action            string
@@ -38,7 +36,6 @@ type Query struct {
   NCloseOrders      int8
 }
 
-
 type Database struct {
   conn                  *sql.DB
   db_chan               chan *Query
@@ -48,7 +45,6 @@ type Database struct {
   update_trailing_stop  *sql.Stmt
   update_n_close_orders *sql.Stmt
 }
-
 
 // Prepare queries so they don't have to be created every for every query
 func (db *Database) prepQueries() error {
@@ -120,7 +116,6 @@ func (db *Database) prepQueries() error {
   return nil
 }
 
-
 // Reestablish connection if lost
 func (db *Database) pingAndSetupQueries() error {
   err := db.conn.Ping()
@@ -133,7 +128,6 @@ func (db *Database) pingAndSetupQueries() error {
   }
   return nil
 }
-
 
 func (db *Database) errorHandler(
   // TODO: Implement specific error handling for bad queries
@@ -170,7 +164,6 @@ func (db *Database) errorHandler(
   NNP.NoNewPositionsFalse("Database")
 }
 
-
 // TODO: Change queries so they are correct(but have to see how the database is structured first)
 func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
   response, err := db.insert_trade.Exec(
@@ -196,7 +189,6 @@ func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
   }
 }
 
-
 func (db *Database) insertPosition(query *Query, backoff_sec int, retries int) {
   response, err := db.insert_position.Exec(
     query.PositionID,
@@ -221,14 +213,12 @@ func (db *Database) insertPosition(query *Query, backoff_sec int, retries int) {
   }
 }
 
-
 func (db *Database) deletePosition(query *Query, backoff_sec int, retries int) {
   response, err := db.delete_position.Exec(query.Symbol, query.StratName)
   if err != nil {
     db.errorHandler(err, "deletePosition", response, query, retries, &backoff_sec)
   }
 }
-
 
 func (db *Database) updateTrailingStop(query *Query, backoff_sec int, retries int) {
   response, err := db.update_trailing_stop.Exec(query.TrailingStopPrice, query.Symbol, query.StratName)
@@ -237,15 +227,12 @@ func (db *Database) updateTrailingStop(query *Query, backoff_sec int, retries in
   }
 }
 
-
 func (db *Database) updateNCloseOrders(query *Query, backoff_sec int, retries int) {
   response, err := db.update_n_close_orders.Exec(query.NCloseOrders, query.Symbol, query.StratName)
   if err != nil {
     db.errorHandler(err, "updateNCloseOrders", response, query, retries, &backoff_sec)
   }
 }
-
-
 
 func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
   switch query.Action {
@@ -266,14 +253,12 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
   }
 }
 
-
 func (db *Database) listen() {
   for {
     query := <-db.db_chan
     db.queryHandler(query, 5, 0)
   }
 }
-
 
 func (db *Database) connect() {
   url := fmt.Sprintf("%s:%s@/%s", constant.DB_USER, constant.DB_PASSWORD, constant.DB_NAME)
@@ -284,14 +269,12 @@ func (db *Database) connect() {
   }
 }
 
-
 // Constructor
 func NewDatabase(db_chan chan *Query) (db *Database) {
   db = &Database{}
   db.db_chan = db_chan
   return
 }
-
 
 func (db *Database) Start(wg *sync.WaitGroup) {
   defer wg.Done()
@@ -302,5 +285,6 @@ func (db *Database) Start(wg *sync.WaitGroup) {
     log.Panicf("[ ERROR ]\tsetupQueries() failed: %s\n", err.Error())
   }
   // TODO: Implement error handling with backoff and reconnect
+  //  -> Wait don't I have this already?
   db.listen()
 }

@@ -14,7 +14,7 @@ func TestIndexSingle(t *testing.T) {
   for i := 0; i < constant.WINDOW_SIZE; i++ {
     a.C[i] = float64(i)
   }
-  arr := a.IndexSingle(&a.C, pos)
+  arr := a.C[a.I(pos)]
   assert.Equal(t, a.C[len(a.C) - 1 - pos], arr)
 }
 

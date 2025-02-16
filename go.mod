@@ -1,10 +1,13 @@
 module github.com/Kjellemann1/AlgoTrader-Go
 
-go 1.23.2
+go 1.23.5
 
-toolchain go1.23.5
+toolchain go1.23.6
+
+replace github.com/Kjellemann1/Gostuff => /home/kjellarne/Programming/GoStuff
 
 require (
+	github.com/Kjellemann1/Gostuff v0.0.0-00010101000000-000000000000
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1

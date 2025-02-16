@@ -17,6 +17,9 @@ func rollFloat(arr *[]float64, v float64) {
 }
 
 func (a *Asset) fillMissingMinutes(t time.Time) {
+  // TODO: Write test for this!!!
+  // TODO: THIS ONLY WORKS FOR CRYPTO. ASSUMES 24/7 MARKET
+  //  -> Maybe only add synthetic bar if the times are on the same day if stock
   if a.Time.IsZero() {
     return
   }
@@ -71,6 +74,8 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
     L: make([]float64, constant.WINDOW_SIZE),
     C: make([]float64, constant.WINDOW_SIZE),
     strategies: []strategyFunc{
+      (*Asset).EMACrossRSI,
+      (*Asset).RSIMiddle,
       // (*Asset).testCool,
       // (*Asset).testRand,
       // (*Asset).testRSI,
@@ -210,10 +215,9 @@ func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, sy
 }
 
 // Methods below this point are for being called from strategy functions
-
-func (a *Asset) I(arr *[]float64, i int) (num float64) {
-  num = (*arr)[constant.WINDOW_SIZE - 1 - i]
-  return
+func (a *Asset) I(num int) (index int) {
+	index = constant.WINDOW_SIZE - 1 - num
+	return
 }
 
 func (a *Asset) IndexArray(arr *[]float64, from int, to int) (slice []float64) {
@@ -280,7 +284,9 @@ func (a *Asset) Close(order_type string, strat_name string) {
 }
 
 func (a *Asset) StopLoss(percent float64, strat_name string) {
-  // TODO: Log if StopLoss triggered to db
+  // TODO:
+  //   -> Log if stop loss triggered to db
+  //   -> Implement logic for short positions
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
@@ -288,7 +294,7 @@ func (a *Asset) StopLoss(percent float64, strat_name string) {
   if fill_price == 0 {
     return
   }
-  dev := (fill_price / a.I(&a.C, 0) - 1) * 100
+  dev := (fill_price / a.C[a.I(0)] - 1) * 100
   if dev < (percent * -1) {
     a.Close("IOC", strat_name)
     log.Printf("[ INFO ]\tStopLoss\t%s\t%s", a.Symbol, strat_name)
@@ -296,7 +302,9 @@ func (a *Asset) StopLoss(percent float64, strat_name string) {
 }
 
 func (a *Asset) TakeProfit(percent float64, strat_name string) {
-  // TODO: Log if Take Profit triggered to db
+  // TODO:
+  //   -> Log if take profit triggered to db
+  //   -> Implement logic for short positions
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
@@ -304,7 +312,7 @@ func (a *Asset) TakeProfit(percent float64, strat_name string) {
   if fill_price == 0 {
     return
   }
-  dev := (fill_price / a.I(&a.C, 0) - 1) * 100
+  dev := (fill_price / a.C[a.I(0)] - 1) * 100
   if dev > percent {
     a.Close("IOC", strat_name)
     log.Printf("[ INFO ]\tTakeProfit\t%s\t%s", a.Symbol, strat_name)

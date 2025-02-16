@@ -41,6 +41,7 @@ const MAX_TRIGGER_TIME_DIFF_MS = 100 * time.Millisecond
 
 
 var STOCK_LIST = []string{
+  // DID YOU FIX FILL MISSING MINUTES YET?
   // "AAPL",
   // "MSFT",
   // "NVDA",
