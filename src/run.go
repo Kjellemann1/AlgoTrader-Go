@@ -13,7 +13,9 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
 )
 
-// This is for all intents and purposes the main function
+var globRwm sync.RWMutex
+
+// This is, for all intents and purposes, the main function
 func Run() {
   fmt.Println("Starting AlgoTrader")
   rootCtx, rootCancel := context.WithCancel(context.Background())
@@ -56,7 +58,6 @@ func Run() {
           marketCancel()
           accountCancel()
           rootCancel()
-          return
         case "N", "n":
           NNP.NoNewPositionsFalse("Run")
           log.Println("Shutdown aborted. Resuming...")
@@ -89,7 +90,7 @@ func Run() {
   var wg sync.WaitGroup
   wg.Add(1)
   db := NewDatabase(db_chan)
-  go db.Start(&wg)
+  go db.Start(&wg, assets)
   wg.Add(1)
   a := NewAccount(assets, db_chan)
   go a.Start(&wg, accountCtx)

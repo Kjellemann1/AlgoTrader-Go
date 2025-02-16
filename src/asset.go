@@ -74,10 +74,10 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
     L: make([]float64, constant.WINDOW_SIZE),
     C: make([]float64, constant.WINDOW_SIZE),
     strategies: []strategyFunc{
-      (*Asset).EMACrossRSI,
-      (*Asset).RSIMiddle,
+      // (*Asset).EMACrossRSI,
+      // (*Asset).RSIMiddle,
       // (*Asset).testCool,
-      // (*Asset).testRand,
+      (*Asset).testRand,
       // (*Asset).testRSI,
       // (*Asset).testSMA,
       // (*Asset).testBBands,

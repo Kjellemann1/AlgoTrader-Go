@@ -243,6 +243,44 @@ func (db *Database) updateNCloseOrders(query *Query, backoff_sec int, retries in
   }
 }
 
+func (db *Database) retrievePositions() {
+  response, err := db.conn.Query("SELECT * FROM positions;")
+  if err != nil {
+    handlelog.Error(err, "retrievePositions")
+  }
+  defer response.Close()
+  for response.Next() {
+    var positionID, symbol, assetClass, side, stratName, orderType string
+    var qty, triggerPrice, filledAvgPrice, trailingStop float64
+    var priceTime, receivedTime, triggerTime, fillTime time.Time
+    var badForAnalysis bool
+    var nCloseOrders int8
+    err = response.Scan(
+      &positionID,
+      &symbol,
+      &assetClass,
+      &side,
+      &stratName,
+      &orderType,
+      &qty,
+      &priceTime,
+      &receivedTime,
+      &triggerTime,
+      &triggerPrice,
+      &fillTime,
+      &filledAvgPrice,
+      &trailingStop,
+      &badForAnalysis,
+      &nCloseOrders,
+    )
+    if err != nil {
+      handlelog.Error(err, "retrievePositions")
+    }
+    fmt.Println(positionID, symbol, assetClass, side, stratName, orderType, qty, priceTime, receivedTime, triggerTime, triggerPrice, fillTime, filledAvgPrice, trailingStop, badForAnalysis, nCloseOrders)
+  }
+}
+
+
 func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
   switch query.Action {
     case "open":
@@ -259,12 +297,15 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
       db.updateTrailingStop(query, backoff_sec, retries)
     case "delete_all_positions":
       db.deleteAllPositions(backoff_sec, retries)
+    case "retrieve_positions":
+      db.retrievePositions()
     default:
       handlelog.Error(errors.New("Invalid query type"), "Query", query)
   }
 }
 
 func (db *Database) listen() {
+  log.Println("[ OK ]\tDatabase listening")
   for {
     query := <-db.db_chan
     if query == nil {
@@ -291,15 +332,77 @@ func NewDatabase(db_chan chan *Query) (db *Database) {
   return
 }
 
-func (db *Database) Start(wg *sync.WaitGroup) {
+func (db *Database) Start(wg *sync.WaitGroup, assets map[string]map[string]*Asset) {
   defer wg.Done()
   db.connect()
   defer db.conn.Close()
+  db.RetrieveState(assets)
   err := db.prepQueries()
   if err != nil {
     log.Panicf("[ ERROR ]\tsetupQueries() failed: %s\n", err.Error())
   }
-  // TODO: Implement error handling with backoff and reconnect
-  //  -> Wait don't I have this already?
   db.listen()
+}
+
+func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
+  globRwm.Lock()
+  defer globRwm.Unlock()
+  response, err := db.conn.Query("SELECT * FROM positions;")
+  if err != nil {
+    handlelog.ErrorPanic(err)
+  }
+  defer response.Close()
+  assetQty := make(map[string]decimal.Decimal)
+  for response.Next() {
+    var positionID, symbol, assetClass, side, stratName, orderType string
+    var qty decimal.Decimal
+    var triggerPrice, filledAvgPrice, trailingStop float64
+    var priceTime, receivedTime, triggerTime, fillTime time.Time
+    var badForAnalysis bool
+    var nCloseOrders int8
+    err = response.Scan(
+      &symbol,
+      &stratName,
+      &assetClass,
+      &positionID,
+      &side,
+      &orderType,
+      &qty,
+      &priceTime,
+      &triggerTime,
+      &triggerPrice,
+      &fillTime,
+      &filledAvgPrice,
+      &trailingStop,
+      &badForAnalysis,
+      &receivedTime,
+      &nCloseOrders,
+    )
+    assetQty[symbol].Add(qty)
+    assets[assetClass][symbol].Positions[stratName] = &Position{
+      Symbol: symbol,
+      AssetClass: assetClass,
+      StratName: stratName,
+      Qty: qty,
+      BadForAnalysis: badForAnalysis,
+      PositionID: positionID,
+      OpenOrderPending: false,
+      OpenTriggerTime: triggerTime,
+      OpenSide: side,
+      OpenOrderType: orderType,
+      OpenTriggerPrice: triggerPrice,
+      OpenPriceTime: priceTime,
+      OpenPriceReceivedTime: receivedTime,
+      OpenFillTime: fillTime,
+      OpenFilledAvgPrice: filledAvgPrice,
+      CloseOrderPending: false,
+      NCloseOrders: nCloseOrders,
+    }
+  }
+  for _, asset := range constant.STOCK_LIST {
+    for _, symbol := range constant.STOCK_LIST {
+      assets[asset][symbol].AssetQty = assetQty[symbol]
+    }
+  }
+  log.Println("[ OK ]\tState retrieved from database")
 }
