@@ -213,6 +213,15 @@ func (db *Database) insertPosition(query *Query, backoff_sec int, retries int) {
   }
 }
 
+func (db *Database) deleteAllPositions(backoff_sec int, retries int) {
+  response, err := db.conn.Exec("DELETE FROM positions WHERE 1;")
+  if err != nil {
+    db.errorHandler(err, "deleteAllPositions", response, nil, retries, &backoff_sec)
+  } else {
+    log.Println("[ OK ]\tAll positions deleted from database")
+  }
+}
+
 func (db *Database) deletePosition(query *Query, backoff_sec int, retries int) {
   response, err := db.delete_position.Exec(query.Symbol, query.StratName)
   if err != nil {
@@ -248,6 +257,8 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
       }
     case "update":
       db.updateTrailingStop(query, backoff_sec, retries)
+    case "delete_all_positions":
+      db.deleteAllPositions(backoff_sec, retries)
     default:
       handlelog.Error(errors.New("Invalid query type"), "Query", query)
   }
@@ -256,6 +267,10 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
 func (db *Database) listen() {
   for {
     query := <-db.db_chan
+    if query == nil {
+      db.conn.Close()
+      return
+    }
     db.queryHandler(query, 5, 0)
   }
 }

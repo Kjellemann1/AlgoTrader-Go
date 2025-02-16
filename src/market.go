@@ -8,6 +8,7 @@ import (
   "slices"
   "time"
   "strings"
+  "context"
   "github.com/valyala/fastjson"
   "github.com/gorilla/websocket"
 
@@ -205,7 +206,7 @@ func (m *Market) connect(initial *bool) error {
   return nil
 }
 
-func (m *Market) PingPong() {
+func (m *Market) PingPong(ctx context.Context) {
   if err := m.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
     handlelog.Warning(err)
   }
@@ -218,20 +219,22 @@ func (m *Market) PingPong() {
     defer ticker.Stop()
     for {
       select {
+      case <-ctx.Done():
+        return
       case <-ticker.C:
-        if err := m.conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5 * time.Second)); err != nil {
+        if err := m.conn.WriteControl(
+          websocket.PingMessage, []byte("ping"),
+          time.Now().Add(5 * time.Second)); err != nil {
           handlelog.Warning(err)
           m.conn.Close()
           return
-        } else {
         }
       }
     }
   }()
 }
 
-func (m *Market) listen() error {
-  defer m.conn.Close()
+func (m *Market) listen(ctx context.Context) error {
   wg := sync.WaitGroup{}
   defer wg.Wait()
   n_workers := len(m.assets)
@@ -241,15 +244,22 @@ func (m *Market) listen() error {
     _, message, err := m.conn.ReadMessage()
     received_time := time.Now().UTC()
     if err != nil {
-      if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
-        handlelog.Warning(err)
-        return err
-      } else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-        handlelog.Warning(err)
-        return err
-      } else {
-        handlelog.Warning(err, "Message", string(message))
-        continue
+      select {
+      case <-ctx.Done():
+        return ctx.Err()
+      default:
+        if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+          handlelog.Warning(err)
+          m.conn.Close()
+          return err
+        } else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+          handlelog.Warning(err)
+          m.conn.Close()
+          return err
+        } else {
+          handlelog.Warning(err, "Message", string(message))
+          continue
+        }
       }
     }
     m.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -257,32 +267,37 @@ func (m *Market) listen() error {
   }
 }
 
-func (m *Market) Start(wg *sync.WaitGroup) {
+func (m *Market) Start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
   backoff_sec := 5
   retries := 0
   initial := true
+  go func() {
+    <-ctx.Done()
+    m.conn.Close()
+  }()
   for {
-    err := m.connect(&initial)
-    if err != nil {
-      if retries < 5 {
-        handlelog.Error(err, "Retries", retries)
-      } else {
-        handlelog.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
-        order.CloseAllPositions(2, 0)
-        log.Panic("SHUTTING DOWN")
+    select {
+    case <-ctx.Done():
+      return
+    default:
+      err := m.connect(&initial)
+      if err != nil {
+        if retries < 5 {
+          handlelog.Error(err, "Retries", retries)
+        } else {
+          handlelog.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+          order.CloseAllPositions(2, 0)
+          log.Panic("SHUTTING DOWN")
+        }
+        backoff.Backoff(&backoff_sec)
+        retries++
+        continue
       }
-      backoff.Backoff(&backoff_sec)
-      retries++
-      continue
     }
     backoff_sec = 5
     retries = 0
-    m.PingPong()
-    m.listen()
-    err = m.conn.Close()
-    if err != nil {
-      handlelog.Error(errors.New("Could not close connection (after a.listen() call)"))
-    }
+    m.PingPong(ctx)
+    m.listen(ctx)
   }
 }

@@ -2,8 +2,6 @@
 create database algo;
 use algo;
 
-drop table positions;
-
 create table positions (
 	symbol varchar(50),
 	strat_name varchar(255),

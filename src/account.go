@@ -1,4 +1,3 @@
-
 package src
 
 import (
@@ -9,6 +8,7 @@ import (
   "strconv"
   "sync"
   "time"
+  "context"
   "github.com/gorilla/websocket"
   "github.com/valyala/fastjson"
   "github.com/shopspring/decimal"
@@ -17,7 +17,6 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
 )
-
 
 func grepStratName(orderID string) (string, error) {
   pattern := `strat\[(.*?)\]`
@@ -28,7 +27,6 @@ func grepStratName(orderID string) (string, error) {
   }
   return "", errors.New("")
 }
-
 
 type OrderUpdate struct {
   Event          string
@@ -41,7 +39,6 @@ type OrderUpdate struct {
   FilledAvgPrice *float64
 }
 
-
 type Account struct {
   conn *websocket.Conn
   parser fastjson.Parser
@@ -49,7 +46,6 @@ type Account struct {
   assets map[string]map[string]*Asset
   // TODO stock and crypto cleared for shutdown
 }
-
 
 func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Account {
   a := &Account{
@@ -60,7 +56,6 @@ func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Accou
   return a
 }
 
-
 func (a *Account) onAuth(element *fastjson.Value) {
   msg := string(element.Get("data").GetStringBytes("status"))
   if msg == "authorized" {
@@ -69,7 +64,6 @@ func (a *Account) onAuth(element *fastjson.Value) {
     log.Panicln("[ ERROR ]\tAuthorization with account websocket failed")
   }
 }
-
 
 func (a *Account) messageHandler(message []byte) {
   parsed_msg, err := a.parser.ParseBytes(message)
@@ -93,7 +87,6 @@ func (a *Account) messageHandler(message []byte) {
       log.Println("[ OK ]\tListening to order updates")
   }
 }
-
 
 func (a *Account) connect(initial *bool) (err error) {
   conn, response, err := websocket.DefaultDialer.Dial("wss://paper-api.alpaca.markets/stream", nil)
@@ -139,8 +132,7 @@ func (a *Account) connect(initial *bool) (err error) {
   return
 }
 
-
-func (a *Account) PingPong() {
+func (a *Account) PingPong(ctx context.Context) {
   if err := a.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
     handlelog.Warning(err)
   }
@@ -148,17 +140,19 @@ func (a *Account) PingPong() {
     a.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
     return nil
   })
-
   go func() {
     ticker := time.NewTicker(30 * time.Second)
     defer ticker.Stop()
     for {
       select {
+      case <-ctx.Done():
+        return
       case <-ticker.C:
         if err := a.conn.WriteControl(
           websocket.PingMessage, []byte("ping"), 
           time.Now().Add(5 * time.Second)); err != nil {
           handlelog.Warning(err)
+          a.conn.Close()
           return
         }
       }
@@ -166,57 +160,92 @@ func (a *Account) PingPong() {
   }()
 }
 
+func (a *Account) ordersPending() bool {
+  for _, class := range a.assets {
+    for _, asset := range class {
+      for _, position := range (*asset).Positions {
+        if position.OpenOrderPending || position.CloseOrderPending {
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
 
-func (a *Account) listen() {
-  defer a.conn.Close()
+func (a *Account) listen(ctx context.Context) {
   for {
     _, message, err := a.conn.ReadMessage()
     if err != nil {
-      if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
-        handlelog.Warning(err)
+      select {
+      case <-ctx.Done():
         return
-      } else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-        handlelog.Warning(err)
-        return
-      } else {
-        NNP.NoNewPositionsTrue("Account.listen")
-        handlelog.Error(err, "Message", string(message), "NoNewPositions", NNP.Flag)
-        continue
+      default:
+        if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+          handlelog.Warning(err)
+          a.conn.Close()
+          return
+        } else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+          handlelog.Warning(err)
+          a.conn.Close()
+          return
+        } else {
+          NNP.NoNewPositionsTrue("Account.listen")
+          handlelog.Error(err, "Message", string(message), "NoNewPositions", NNP.Flag)
+          continue
+        }
       }
     }
     a.messageHandler(message)
   }
 }
 
-
-func (a *Account) Start(wg *sync.WaitGroup) {
+func (a *Account) Start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
   backoff_sec := 5
   retries := 0
   initial := true
-  for {
-    err := a.connect(&initial)
-    if err != nil {
-      if retries < 5 {
-        handlelog.Error(err, "Retries", retries)
+  go func() {
+    ticker := time.NewTicker(2 * time.Second)
+    defer ticker.Stop()
+    <-ctx.Done()
+    for range ticker.C {
+      if a.ordersPending() {
+        log.Println("Order pending ...")
       } else {
-        handlelog.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
-        order.CloseAllPositions(2, 0)
-        log.Panic("SHUTTING DOWN")
+        a.db_chan <- nil
+        a.conn.Close()
+        return
       }
-      backoff.Backoff(&backoff_sec)
-      retries++
-      continue
+    }
+  }()
+  for {
+    select {
+    case <-ctx.Done():
+      return
+    default:
+      err := a.connect(&initial)
+      if err != nil {
+        if retries < 5 {
+          handlelog.Error(err, "Retries", retries)
+        } else {
+          handlelog.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+          order.CloseAllPositions(2, 0)
+          log.Panic("SHUTTING DOWN")
+        }
+        backoff.Backoff(&backoff_sec)
+        retries++
+        continue
+      }
     }
     backoff_sec = 5
     retries = 0
-    a.PingPong()
-    a.listen()
+    a.PingPong(ctx)
+    a.listen(ctx)
     // TODO: On reconnect, check that positions on the server are the same as locally
     //   -> Make sure we didn't miss any updates
   }
 }
-
 
 func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
   a.Rwm.Lock()
@@ -234,7 +263,6 @@ func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
     log.Fatal("SHUTTING DOWN")
   }
 }
-
 
 func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
   // Extract event. Shutdown if nil
@@ -337,7 +365,6 @@ func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
     FilledAvgPrice:   filled_avg_price_ptr,
   }
 }
-
 
 func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   var asset = a.assets[u.AssetClass][*u.Symbol]
