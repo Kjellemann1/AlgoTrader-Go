@@ -99,7 +99,7 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
           }
         }
       }
-      log.Printf("[ OK ]\tAll symbols present in websocket subscription for %s", m.asset_class)
+    log.Printf("[ OK ]\tAll symbols present in websocket subscription for %s", m.asset_class)
   }
 }
 

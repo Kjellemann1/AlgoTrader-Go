@@ -352,7 +352,6 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
     handlelog.ErrorPanic(err)
   }
   defer response.Close()
-  assetQty := make(map[string]decimal.Decimal)
   for response.Next() {
     var positionID, symbol, assetClass, side, stratName, orderType string
     var qty decimal.Decimal
@@ -378,7 +377,6 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       &receivedTime,
       &nCloseOrders,
     )
-    assetQty[symbol].Add(qty)
     assets[assetClass][symbol].Positions[stratName] = &Position{
       Symbol: symbol,
       AssetClass: assetClass,
@@ -398,11 +396,7 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       CloseOrderPending: false,
       NCloseOrders: nCloseOrders,
     }
-  }
-  for _, asset := range constant.STOCK_LIST {
-    for _, symbol := range constant.STOCK_LIST {
-      assets[asset][symbol].AssetQty = assetQty[symbol]
-    }
+    assets[assetClass][symbol].AssetQty.Add(qty)
   }
   log.Println("[ OK ]\tState retrieved from database")
 }

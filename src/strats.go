@@ -2,6 +2,7 @@ package src
 
 import (
   "math/rand"
+  "log"
   // "github.com/markcheno/go-talib"
   // "github.com/Kjellemann1/Gostuff/indicators"
 )
@@ -52,9 +53,11 @@ func (a *Asset) testRand() {
   num := rand.Intn(100)
   if num < 30 {
     a.Open("long", "IOC", strat_name)
+    log.Printf("[ INFO ]\tOpening position\t%s\t%s", a.Symbol, strat_name)  // Remove
   }
   if num >= 70 {
     a.Close("IOC", strat_name)
+    log.Printf("[ INFO ]\tClosing position\t%s\t%s", a.Symbol, strat_name)  // Remove
   }
   a.Mutex.Unlock()
 }

@@ -194,6 +194,7 @@ func (a *Asset) RemovePosition(strat_name string) {
 func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string, last_close float64) (err error) {
   switch order_type {
     case "IOC":
+      log.Println("[ INFO ]\tOpening position", symbol, order_id)  // Remove
       err = order.OpenLongIOC(symbol, order_id, last_close)
   }
   return
