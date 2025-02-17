@@ -1,4 +1,3 @@
-
 // Position objects are stored in the Asset object of the given asset.
 // Each asset can have multiple positions, but only one position per strategy.
 

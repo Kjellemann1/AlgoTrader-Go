@@ -27,7 +27,7 @@ var DB_HOST string
 var DB_PORT string
 
 
-const HIST_DAYS = 3
+const HIST_DAYS = 1
 const HIST_LIMIT = 10000
 
 
@@ -84,17 +84,17 @@ var CRYPTO_LIST = []string{
   "DOGE/USD",
   "LINK/USD",
   "AVAX/USD",
-  // "LTC/USD",
-  // "SHIB/USD",
-  // "DOT/USD",
-  // "BCH/USD",
-  // "UNI/USD",
-  // "AAVE/USD",
-  // "YFI/USD",
-  // "MKR/USD",
-  // "GRT/USD",
-  // "XTZ/USD",
-  // "BAT/USD",
-  // "SUSHI/USD",
-  // "CRV/USD",
+  "LTC/USD",
+  "SHIB/USD",
+  "DOT/USD",
+  "BCH/USD",
+  "UNI/USD",
+  "AAVE/USD",
+  "YFI/USD",
+  "MKR/USD",
+  "GRT/USD",
+  "XTZ/USD",
+  "BAT/USD",
+  "SUSHI/USD",
+  "CRV/USD",
 }

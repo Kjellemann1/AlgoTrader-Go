@@ -16,7 +16,6 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/pretty"
 )
 
 func grepStratName(orderID string) (string, error) {
@@ -167,9 +166,9 @@ func (a *Account) ordersPending() bool {
       for _, position := range (*asset).Positions {
         if position.OpenOrderPending || position.CloseOrderPending {
           if position.OpenOrderPending {
-            fmt.Println("Open order pending for:", position.Symbol)
+            log.Println("Open order pending for:", position.Symbol)
           } else if position.CloseOrderPending {
-            fmt.Println("Close order pending for:", position.Symbol)
+            log.Println("Close order pending for:", position.Symbol)
           }
           return true
         }
@@ -217,7 +216,7 @@ func (a *Account) Start(wg *sync.WaitGroup, ctx context.Context) {
     <-ctx.Done()
     for range ticker.C {
       if a.ordersPending() {
-        log.Println("Order pending ...")
+        continue
       } else {
         a.db_chan <- nil
         a.conn.Close()
@@ -271,8 +270,6 @@ func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
 }
 
 func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
-  fmt.Println("  -> Account Update:")
-  pretty.PrintFormattedJSON(parsed_msg)
   // Extract event. Shutdown if nil
   event := parsed_msg.Get("data").GetStringBytes("event")
   if event == nil {

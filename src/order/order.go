@@ -1,4 +1,3 @@
-
 package order
 
 import (
@@ -14,7 +13,6 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
 )
 
-
 var httpClient = &http.Client{
   Timeout: constant.HTTP_TIMEOUT_SEC,
   Transport: &http.Transport{
@@ -24,7 +22,6 @@ var httpClient = &http.Client{
     DisableKeepAlives: false,
   },
 }
-
 
 func SendOrder(payload string) error {
   url := constant.ENDPOINT + "/orders"
@@ -43,7 +40,6 @@ func SendOrder(payload string) error {
   return nil
 }
 
-
 func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
   qty, _ := decimal.NewFromString("0")
   if asset_class == "stock" {
@@ -52,14 +48,12 @@ func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
       qty = decimal.NewFromInt(0)
     }
   } else if asset_class == "crypto" {
-    qty = decimal.NewFromFloat(constant.ORDER_AMOUNT_USD / last_price).RoundDown(9)  // Alpaca accepts max 9 decimal places
+    qty = decimal.NewFromFloat(constant.ORDER_AMOUNT_USD / last_price).RoundDown(9)
   }
   return qty
 }
 
-
-// TODO: Make sure this doesn't run for an infinite loop by implementing a max nuber of retries
-// Check if position exists. Used for errors in close orders
+// TODO: Make sure this doesn't run for an infinite loop by implementing a max number of retries
 func CheckIfPositionExists(symbol string) (bool, decimal.Decimal) {
   // TODO: Specific error handling
   var backoff_sec int = 4
@@ -129,7 +123,6 @@ func CheckIfPositionExists(symbol string) (bool, decimal.Decimal) {
   }
 }
 
-
 func CheckIfOrderExists(symbol string) (bool, string, error) {
   url := constant.ENDPOINT + "/orders?status=open&symbols=" + symbol
   request, err := http.NewRequest("GET", url, nil)
@@ -160,7 +153,6 @@ func CheckIfOrderExists(symbol string) (bool, string, error) {
   return true, order_id, nil
 }
 
-
 func CancelOrder(order_id string) error {
   url := constant.ENDPOINT + "/orders/" + order_id
   req, err := http.NewRequest("DELETE", url, nil)
@@ -177,7 +169,6 @@ func CancelOrder(order_id string) error {
   defer resp.Body.Close()
   return nil
 }
-
 
 func CheckIfQtyMatches(symbol string, qty decimal.Decimal) {
   // TODO

@@ -1,4 +1,3 @@
-
 package src
 
 import (
@@ -11,8 +10,6 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
 )
 
-
-// Set up logging to both console and file.
 func init() {
   name := "/var/lib/mysql-files/algologs/" + time.Now().In(time.UTC).Format(time.DateTime) + ".log"
   logfile, err := os.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -23,8 +20,6 @@ func init() {
   log.SetOutput(multiWriter)
 }
 
-
-// Load environment variables and set up constants
 func init() {
   err := godotenv.Load()
   if err != nil {

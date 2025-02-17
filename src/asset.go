@@ -149,6 +149,10 @@ func (a *Asset) SumPosQtyEqAssetQty() bool {
     count = count.Add(val.Qty)
   }
   if a.AssetQty.Compare(count) != 0 {
+    log.Printf(
+      "[ INFO ]\tAssetQty does not equal sum of position quantities\n" +
+      "  ->AssetQty: %s\n\tSum of position quantities: %s\n\tSymbol: %s\n",
+    a.AssetQty.String(), count.String(), a.Symbol)
     return false
   } else {
     return true
@@ -191,11 +195,13 @@ func (a *Asset) RemovePosition(strat_name string) {
   delete(a.Positions, strat_name)
 }
 
-func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string, last_close float64) (err error) {
+func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string, asset_class string, last_close float64) (err error) {
   switch order_type {
     case "IOC":
-      log.Println("[ INFO ]\tOpening position", symbol, order_id)  // Remove
-      err = order.OpenLongIOC(symbol, order_id, last_close)
+      err = order.OpenLongIOC(symbol, asset_class, order_id, last_close)
+      if err != nil {
+        return err
+      }
   }
   return
 }
@@ -229,6 +235,7 @@ func (a *Asset) IndexArray(arr *[]float64, from int, to int) (slice []float64) {
 func (a *Asset) Open(side string, order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
   if _, ok := a.Positions[strat_name]; ok {
+    log.Println("[ INFO ]\tOpen cancelled since trade already exists", a.Symbol)
     return
   }
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
@@ -245,13 +252,13 @@ func (a *Asset) Open(side string, order_type string, strat_name string) {
   last_close := a.C[constant.WINDOW_SIZE-1]
   symbol := a.Symbol
   order_id := a.createPositionID(strat_name)
+  asset_class := a.AssetClass
   a.Mutex.Unlock()
   a.initiatePositionObject(strat_name, order_type, side, order_id, trigger_time)
-  err := a.sendOpenOrder(order_type, order_id, symbol, last_close)
+  err := a.sendOpenOrder(order_type, order_id, symbol, asset_class, last_close)
   if err != nil {
-    handlelog.Error(err, "Symbol", symbol, "Strat", strat_name, "OrderType", order_type, "Side", side)
+    handlelog.Warning(err, "Symbol", symbol, "Strat", strat_name, "OrderType", order_type, "Side", side)
     a.RemovePosition(strat_name)
-    return
   }
   a.Mutex.Lock()
 }
@@ -264,6 +271,7 @@ func (a *Asset) Close(order_type string, strat_name string) {
   pos := a.Positions[strat_name]
   pos.Rwm.Lock()
   if pos.CloseOrderPending || pos.OpenOrderPending {
+    pos.Rwm.Unlock()
     return
   }
   open_side := pos.OpenSide

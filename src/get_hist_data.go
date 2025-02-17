@@ -1,4 +1,3 @@
-
 package src
 
 import (
@@ -11,7 +10,6 @@ import (
   "github.com/valyala/fastjson"
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
 )
-
 
 func urlHistBars(asset_class string, page_token string) string {
   t := time.Now().UTC().AddDate(0, 0, -constant.HIST_DAYS).Format("2006-01-02T15:04:05Z")
@@ -38,7 +36,6 @@ func urlHistBars(asset_class string, page_token string) string {
   return url
 }
 
-
 func makeRequest(asset_class string, page_token string) *fastjson.Value {
   url := urlHistBars(asset_class, page_token)
   req, err := http.NewRequest("GET", url, nil)
@@ -61,7 +58,6 @@ func makeRequest(asset_class string, page_token string) *fastjson.Value {
   parsed, _ := p.ParseBytes(body)
   return parsed
 }
-
 
 func GetHistBars(assets map[string]*Asset, asset_class string) {
   var arr []*fastjson.Value
@@ -100,5 +96,4 @@ func GetHistBars(assets map[string]*Asset, asset_class string) {
     })
   }
 }
-
 // TODO: Add check that none of the prices are zero since the API returnes zero in place of missing data
