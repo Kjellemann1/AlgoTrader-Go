@@ -1,0 +1,101 @@
+func (a *Account) updateParser(parsed_msg *fastjson.Value) *OrderUpdate {
+  // Extract event. Shutdown if nil
+  event := parsed_msg.Get("data").GetStringBytes("event")
+  if event == nil {
+    handlelog.Error(
+      errors.New("EVENT NOT IN TRADE UPDATE"), "Parsed message", parsed_msg,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
+    order.CloseAllPositions(2, 0)
+    log.Panicln("SHUTTING DOWN")
+  }
+  event_str := string(event)
+  // Only handle fill, partial_fill and canceled events.
+  // Other events are likely not relevant. https://alpaca.markets/docs/api-documentation/api-v2/streaming/
+  if event_str != "fill" && event_str != "partial_fill" && event_str != "canceled" {
+    return nil
+  }
+  // Extract asset class. Shutdown if nil
+  asset_class := parsed_msg.Get("data").Get("order").GetStringBytes("asset_class")
+  if asset_class == nil {
+    handlelog.Error(
+      errors.New("ASSET CLASS NOT IN TRADE UPDATE"), "Parsed message", parsed_msg,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
+    order.CloseAllPositions(2, 0)
+    log.Panicln("SHUTTING DOWN")
+  }
+  asset_class_str := string(asset_class)
+  if asset_class_str == "us_equity" {
+    asset_class_str = "stock"
+  }
+  // Extract symbol, Return if nil
+  var symbol_ptr *string
+  symbol := parsed_msg.Get("data").Get("order").GetStringBytes("symbol")
+  if symbol == nil {
+    handlelog.Error(
+      errors.New("SYMBOL NOT IN TRADE UPDATE"), "Parsed message", parsed_msg,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
+    order.CloseAllPositions(2, 0)
+    log.Panicln("SHUTTING DOWN")
+  }
+  symbol_str := string(symbol)
+  symbol_ptr = &symbol_str
+  // Extract PositionID. Return if nil
+  order_id := parsed_msg.Get("data").Get("order").GetStringBytes("client_order_id")  // client_order_id == PositionID
+  if order_id == nil {
+    handlelog.Warning(errors.New("Order id not found"), nil)
+    return nil
+  }
+  order_id_str := string(order_id)
+  // Grep strat_name from order id. Return if nil
+  strat_name, err := grepStratName(order_id_str)
+  if err != nil {
+    return nil
+  }
+  // Extract side
+  var side_ptr *string
+  side := parsed_msg.Get("data").Get("order").GetStringBytes("side")
+  if side != nil {
+    side_str := string(side)
+    side_ptr = &side_str
+  }
+  // Extract asset_qty
+  var asset_qty_ptr *decimal.Decimal
+  asset_qty := parsed_msg.Get("data").GetStringBytes("position_qty")
+  if asset_qty != nil {
+    asset_qty_dec, err := decimal.NewFromString(string(asset_qty))
+    if err != nil {
+      handlelog.Error(err, "Asset qty", asset_qty, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+      order.CloseAllPositions(2, 0)
+      log.Panicln("SHUTTING DOWN")
+    }
+    asset_qty_ptr = &asset_qty_dec
+  }
+  // Extract fill_time
+  var fill_time_ptr *time.Time
+  fill_time_byte := parsed_msg.Get("data").Get("order").GetStringBytes("filled_at")
+  if fill_time_byte != nil {
+    fill_time, _ := time.Parse(time.RFC3339, string(fill_time_byte))
+    fill_time_ptr = &fill_time
+  }
+  // Extract filled_avg_price
+  var filled_avg_price_ptr *float64
+  filled_avg_price := parsed_msg.Get("data").Get("order").GetStringBytes("filled_avg_price")
+  if filled_avg_price != nil {
+    filled_avg_price_float, _ := strconv.ParseFloat(string(filled_avg_price), 8)
+    filled_avg_price_ptr = &filled_avg_price_float
+  }
+
+  return &OrderUpdate {
+    Event:            event_str,
+    AssetClass:       asset_class_str,
+    StratName:        strat_name,
+    Side:             side_ptr,
+    Symbol:           symbol_ptr,
+    AssetQty:         asset_qty_ptr,
+    FillTime:         fill_time_ptr,
+    FilledAvgPrice:   filled_avg_price_ptr,
+  }
+}

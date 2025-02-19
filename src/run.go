@@ -13,7 +13,7 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
 )
 
-var globRwm sync.RWMutex
+var  globRwm sync.RWMutex
 
 // This is, for all intents and purposes, the main function
 func Run() {

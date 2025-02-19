@@ -191,8 +191,10 @@ func (m *Market) connect(initial *bool) error {
     sub_msg_symbols = strings.Join(constant.CRYPTO_LIST, "\",\"")
   }
   sub_msg := []byte(fmt.Sprintf(`{"action":"subscribe", "trades":["%s"], "bars":["%s"]}`, sub_msg_symbols, sub_msg_symbols))
-  if err := m.conn.WriteMessage(websocket.TextMessage, sub_msg); err != nil {
-    log.Panicln(err.Error())  // TODO: Cant have panic here on reconnect
+  if err := m.conn.WriteMessage(websocket.TextMessage, sub_msg); err != nil && *initial {
+    log.Panicln(err.Error())
+  } else if err != nil {
+    return err
   }
   // Receive subscription message
   _, sub_msg, err = m.conn.ReadMessage()
@@ -214,24 +216,22 @@ func (m *Market) PingPong(ctx context.Context) {
     m.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
     return nil
   })
-  go func() {
-    ticker := time.NewTicker(30 * time.Second)
-    defer ticker.Stop()
-    for {
-      select {
-      case <-ctx.Done():
+  ticker := time.NewTicker(30 * time.Second)
+  defer ticker.Stop()
+  for {
+    select {
+    case <-ctx.Done():
+      return
+    case <-ticker.C:
+      if err := m.conn.WriteControl(
+        websocket.PingMessage, []byte("ping"),
+        time.Now().Add(5 * time.Second)); err != nil {
+        handlelog.Warning(err)
+        m.conn.Close()
         return
-      case <-ticker.C:
-        if err := m.conn.WriteControl(
-          websocket.PingMessage, []byte("ping"),
-          time.Now().Add(5 * time.Second)); err != nil {
-          handlelog.Warning(err)
-          m.conn.Close()
-          return
-        }
       }
     }
-  }()
+  }
 }
 
 func (m *Market) listen(ctx context.Context) error {
@@ -297,7 +297,7 @@ func (m *Market) Start(wg *sync.WaitGroup, ctx context.Context) {
     }
     backoff_sec = 5
     retries = 0
+    go m.listen(ctx)
     m.PingPong(ctx)
-    m.listen(ctx)
   }
 }
