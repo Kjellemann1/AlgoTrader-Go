@@ -18,14 +18,8 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
 )
 
-func grepStratName(orderID string) (string, error) {
-  pattern := `strat\[(.*?)\]`
-  re := regexp.MustCompile(pattern)
-  match := re.FindStringSubmatch(orderID)
-  if match != nil && len(match) > 1 {
-    return match[1], nil
-  }
-  return "", errors.New("")
+type ParsedMessage struct {
+  *fastjson.Value
 }
 
 type OrderUpdate struct {
@@ -135,33 +129,6 @@ func (a *Account) connect(initial *bool) (err error) {
   return
 }
 
-func (a *Account) PingPong(ctx context.Context) {
-  if err := a.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
-    handlelog.Warning(err)
-  }
-
-  a.conn.SetPongHandler(func(string) error {
-    a.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-    return nil
-  })
-
-  ticker := time.NewTicker(30 * time.Second)
-  defer ticker.Stop()
-  for {
-    select {
-    case <-ctx.Done():
-      return
-    case <-ticker.C:
-      if err := a.conn.WriteControl(
-        websocket.PingMessage, []byte("ping"), 
-        time.Now().Add(5 * time.Second)); err != nil {
-        handlelog.Warning(err)
-        return
-      }
-    }
-  }
-}
-
 func (a *Account) ordersPending() bool {
   for _, class := range a.assets {
     for _, asset := range class {
@@ -212,6 +179,33 @@ func (a *Account) listen(ctx context.Context) {
   }
 }
 
+func (a *Account) PingPong(ctx context.Context) {
+  if err := a.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+    handlelog.Warning(err)
+  }
+
+  a.conn.SetPongHandler(func(string) error {
+    a.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+    return nil
+  })
+
+  ticker := time.NewTicker(30 * time.Second)
+  defer ticker.Stop()
+  for {
+    select {
+    case <-ctx.Done():
+      return
+    case <-ticker.C:
+      if err := a.conn.WriteControl(
+        websocket.PingMessage, []byte("ping"), 
+        time.Now().Add(5 * time.Second)); err != nil {
+        handlelog.Warning(err)
+        return
+      }
+    }
+  }
+}
+
 func (a *Account) Start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
   go a.checkOrdersPending(ctx)
@@ -249,27 +243,6 @@ func (a *Account) Start(wg *sync.WaitGroup, ctx context.Context) {
   }
 }
 
-func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
-  a.Rwm.Lock()
-  defer a.Rwm.Unlock()
-  var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
-  p.Qty = p.Qty.Add(position_change)
-  a.AssetQty = *u.AssetQty
-  if !a.SumPosQtyEqAssetQty() {
-    handlelog.Error(
-      errors.New("Sum of position qty not equal to asset qty"),
-      "Asset", a.AssetQty, "Position", p.Qty, "OrderUpdate", u,
-      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
-    )
-    order.CloseAllPositions(2, 0)
-    log.Fatal("SHUTTING DOWN")
-  }
-}
-
-type ParsedMessage struct {
-  *fastjson.Value
-}
-
 func (p *ParsedMessage) getEvent() *string {
   // Shutdown if nil
   // Only handle fill, partial_fill and canceled events.
@@ -297,11 +270,14 @@ func (p *ParsedMessage) getStratName() *string {
     handlelog.Warning(errors.New("PositionID not found in order update"), nil)
     return nil
   }
-  strat_name, err := grepStratName(string(position_id))
-  if err != nil {
-    return nil
+  position_id_str := string(position_id)
+  pattern := `strat\[(.*?)\]`
+  re := regexp.MustCompile(pattern)
+  match := re.FindStringSubmatch(position_id_str)
+  if match != nil && len(match) > 1 {
+    return &match[1]
   }
-  return &strat_name
+  return nil
 }
 
 func (p *ParsedMessage) getAssetClass() *string {
@@ -410,6 +386,23 @@ func (a *Account) updateParser(p *ParsedMessage) *OrderUpdate {
     AssetQty:         asset_qty,
     FillTime:         fill_time,
     FilledAvgPrice:   filled_avg_price,
+  }
+}
+
+func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
+  a.Rwm.Lock()
+  defer a.Rwm.Unlock()
+  var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
+  p.Qty = p.Qty.Add(position_change)
+  a.AssetQty = *u.AssetQty
+  if !a.SumPosQtyEqAssetQty() {
+    handlelog.Error(
+      errors.New("Sum of position qty not equal to asset qty"),
+      "Asset", a.AssetQty, "Position", p.Qty, "OrderUpdate", u,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
+    order.CloseAllPositions(2, 0)
+    log.Fatal("SHUTTING DOWN")
   }
 }
 
