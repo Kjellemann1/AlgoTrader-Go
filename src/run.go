@@ -17,7 +17,7 @@ var  globRwm sync.RWMutex
 
 // This is, for all intents and purposes, the main function
 func Run() {
-  fmt.Println("Starting AlgoTrader")
+  fmt.Println("Starting AlgoTrader ...")
   rootCtx, rootCancel := context.WithCancel(context.Background())
   defer rootCancel()
   marketCtx, marketCancel := context.WithCancel(rootCtx)
@@ -25,8 +25,8 @@ func Run() {
   db_chan := make(chan *Query, len(constant.STOCK_LIST) + len(constant.CRYPTO_LIST))
   assets := make(map[string]map[string]*Asset)
   sigChan := make(chan os.Signal, 1)
-  signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
+  signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
   go func() {
     for {
       sig := <-sigChan
@@ -73,6 +73,7 @@ func Run() {
       }
     }
   }()
+
   if len(constant.STOCK_LIST) > 0 {
     assets["stock"] = make(map[string]*Asset)
     for _, symbol := range constant.STOCK_LIST {
@@ -80,6 +81,7 @@ func Run() {
     }
     GetHistBars(assets["stock"], "stock")
   }
+
   if len(constant.CRYPTO_LIST) > 0 {
     assets["crypto"] = make(map[string]*Asset)
     for _, symbol := range constant.CRYPTO_LIST {
@@ -87,23 +89,30 @@ func Run() {
     }
     GetHistBars(assets["crypto"], "crypto")
   }
+
   var wg sync.WaitGroup
+
   wg.Add(1)
   db := NewDatabase(db_chan)
   go db.Start(&wg, assets)
+
   wg.Add(1)
   a := NewAccount(assets, db_chan)
   go a.Start(&wg, accountCtx)
+
   if _, ok := assets["stock"]; ok {
     stockMarket := NewMarket("stock", constant.WSS_STOCK, assets["stock"])
     wg.Add(1)
     go stockMarket.Start(&wg, marketCtx)
   }
+
   if _, ok := assets["crypto"]; ok {
     cryptoMarket := NewMarket("crypto", constant.WSS_CRYPTO, assets["crypto"])
     wg.Add(1)
     go cryptoMarket.Start(&wg, marketCtx)
   } 
+
   wg.Wait()
   close(db_chan)
+  close(sigChan)
 }
