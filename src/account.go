@@ -110,33 +110,6 @@ func (a *Account) connect() (err error) {
   return nil
 }
 
-func (a *Account) ordersPending() bool {
-  for _, class := range a.assets {
-    for _, asset := range class {
-      for _, position := range (*asset).Positions {
-        if position.OpenOrderPending || position.CloseOrderPending {
-          return true
-        }
-      }
-    }
-  }
-  return false
-}
-
-func (a *Account) checkOrdersPending(ctx context.Context) {
-  ticker := time.NewTicker(5 * time.Second)
-  defer ticker.Stop()
-  <-ctx.Done()
-  for range ticker.C {
-    if a.ordersPending() {
-      continue
-    } else {
-      a.db_chan <- nil
-      a.conn.Close()
-      return
-    }
-  }
-}
 
 func (a *Account) listen(ctx context.Context) {
   for {
@@ -156,16 +129,16 @@ func (a *Account) listen(ctx context.Context) {
 }
 
 func (a *Account) PingPong(ctx context.Context) {
-  if err := a.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+  if err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
     util.Warning(err)
   }
 
   a.conn.SetPongHandler(func(string) error {
-    a.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+    a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC))
     return nil
   })
 
-  ticker := time.NewTicker(30 * time.Second)
+  ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
   log.Println("[ OK ]\tPingPong initiated for account")
 
@@ -186,7 +159,6 @@ func (a *Account) PingPong(ctx context.Context) {
 
 func (a *Account) Start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
-  go a.checkOrdersPending(ctx)
   backoff_sec := 5
   retries := 0
   initial := true

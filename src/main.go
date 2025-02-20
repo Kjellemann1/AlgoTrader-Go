@@ -20,13 +20,13 @@ func main() {
   db_chan := make(chan *Query, len(constant.STOCK_LIST) + len(constant.CRYPTO_LIST))
   defer close(db_chan)
 
-  go shutdownSignalHandler(marketCancel, accountCancel, db_chan)
-
   var wg sync.WaitGroup
   defer wg.Wait()
 
   assets := prepAssetsMap()
   fillRollingWindows(assets)
+
+  go shutdownSignalHandler(marketCancel, accountCancel, assets, db_chan)
 
   wg.Add(1)
   db := NewDatabase(db_chan)
@@ -37,14 +37,14 @@ func main() {
   go a.Start(&wg, accountCtx)
 
   if _, ok := assets["stock"]; ok {
-    stockMarket := NewMarket("stock", constant.WSS_STOCK, assets["stock"])
+    sm := NewMarket("stock", constant.WSS_STOCK, assets["stock"])
     wg.Add(1)
-    go stockMarket.Start(&wg, marketCtx)
+    go sm.Start(&wg, marketCtx)
   }
 
   if _, ok := assets["crypto"]; ok {
-    cryptoMarket := NewMarket("crypto", constant.WSS_CRYPTO, assets["crypto"])
+    cm := NewMarket("crypto", constant.WSS_CRYPTO, assets["crypto"])
     wg.Add(1)
-    go cryptoMarket.Start(&wg, marketCtx)
+    go cm.Start(&wg, marketCtx)
   } 
 }

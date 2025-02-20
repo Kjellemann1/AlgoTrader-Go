@@ -18,7 +18,7 @@ import (
 )
 
 type MarketMessage struct {
-  message []byte
+  message       []byte
   received_time time.Time
 }
 
@@ -98,13 +98,13 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.T
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   t = t.Add(1 * time.Minute)
   asset.UpdateWindowOnBar(
-      element.GetFloat64("o"),
-      element.GetFloat64("h"),
-      element.GetFloat64("l"),
-      element.GetFloat64("c"),
-      t,
-      received_time,
-    )
+    element.GetFloat64("o"),
+    element.GetFloat64("h"),
+    element.GetFloat64("l"),
+    element.GetFloat64("c"),
+    t,
+    received_time,
+  )
   asset.CheckForSignal()
 }
 
@@ -171,6 +171,11 @@ func (m *Market) connect() (err error) {
     }
     m.messageHandler(MarketMessage{message, time.Now().UTC()})
   }
+
+  if err = m.subscribe(); err != nil {
+    return
+  }
+
   return
 }
 
@@ -195,16 +200,19 @@ func (m *Market) subscribe() (err error) {
 }
 
 func (m *Market) PingPong(ctx context.Context) {
-  if err := m.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+  if err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
     util.Warning(err)
   }
+
   m.conn.SetPongHandler(func(string) error {
-    m.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+    m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC))
     return nil
   })
-  ticker := time.NewTicker(30 * time.Second)
+
+  ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
   log.Println("[ OK ]\tPingPong initiated for market websocket: ", m.asset_class)
+
   for {
     select {
     case <-ctx.Done():

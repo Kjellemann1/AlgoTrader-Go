@@ -4,13 +4,37 @@ import (
   "os"
   "log"
   "fmt"
+  "time"
   "os/signal"
   "syscall"
   "context"
   "github.com/Kjellemann1/AlgoTrader-Go/order"
 )
 
-func shutdownSignalHandler(marketCancel context.CancelFunc, accountCancel context.CancelFunc, db_chan chan *Query) {
+func ordersPending(assets map[string]map[string]*Asset) bool {
+  for _, class := range assets {
+    for _, asset := range class {
+      for _, position := range (*asset).Positions {
+        if position.OpenOrderPending || position.CloseOrderPending {
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
+
+func checkOrdersPending(assets map[string]map[string]*Asset) {
+  ticker := time.NewTicker(5 * time.Second)
+  defer ticker.Stop()
+  for range ticker.C {
+    if !ordersPending(assets) {
+      return
+    }
+  }
+}
+
+func shutdownSignalHandler(marketCancel context.CancelFunc, accountCancel context.CancelFunc, assets map[string]map[string]*Asset, db_chan chan *Query) {
   sigChan := make(chan os.Signal, 1)
   defer close(sigChan)
   signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -32,7 +56,9 @@ func shutdownSignalHandler(marketCancel context.CancelFunc, accountCancel contex
     case "2":
       log.Println("Saving state and shutting down...")
       marketCancel()
+      checkOrdersPending(assets)
       accountCancel()
+      db_chan <- nil
       return
     case "3":
       fmt.Println("ARE YOU SURE YOU WANT TO CLOSE ALL POSITIONS? (y/n)")
@@ -41,10 +67,12 @@ func shutdownSignalHandler(marketCancel context.CancelFunc, accountCancel contex
       switch input {
       case "Y", "y":
         log.Println("Closing all positions and shutting down...")
+        // TODO: Check if remove open orders is necessary
         order.CloseAllPositions(5, 5)
-        db_chan <- &Query{Action: "delete_all_positions"}
         marketCancel()
         accountCancel()
+        db_chan <- &Query{Action: "delete_all_positions"}
+        db_chan <- nil
       default :
         NNP.NoNewPositionsFalse("Run")
         log.Println("Shutdown aborted. Resuming...")
