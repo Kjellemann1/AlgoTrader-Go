@@ -1,14 +1,11 @@
 
-package test
+package main
 
 import (
   "testing"
-  "github.com/Kjellemann1/AlgoTrader-Go/src"
 
   "github.com/stretchr/testify/assert"
 )
-
-var NNP = src.NewNoNewPositions()
 
 func TestNoNewPositions(t *testing.T) {
   NNP.NoNewPositionsTrue("ID1")

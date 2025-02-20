@@ -1,12 +1,21 @@
-
-package test
+package main
 
 import (
   "testing"
   "github.com/stretchr/testify/assert"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
 
+func newAsset() (a *Asset) {
+  a = &Asset{
+    Symbol: "Foo",
+    O: make([]float64, constant.WINDOW_SIZE),
+    H: make([]float64, constant.WINDOW_SIZE),
+    L: make([]float64, constant.WINDOW_SIZE),
+    C: make([]float64, constant.WINDOW_SIZE),
+  }
+  return
+}
 
 func TestIndexSingle(t *testing.T) {
   a := newAsset()

@@ -1,14 +1,12 @@
-
-package test
+package main
 
 import (
   "testing"
   "time"
   "github.com/stretchr/testify/assert"
 
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
-
 
 func TestUpdateWindowOnBar(t *testing.T) {
   test_size := 10000
