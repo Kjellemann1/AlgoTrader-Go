@@ -24,17 +24,19 @@ func ordersPending(assets map[string]map[string]*Asset) bool {
   return false
 }
 
-func checkOrdersPending(assets map[string]map[string]*Asset) {
-  ticker := time.NewTicker(5 * time.Second)
+func stallIfOrdersPending(assets map[string]map[string]*Asset) {
+  ticker := time.NewTicker(3 * time.Second)
   defer ticker.Stop()
   for range ticker.C {
     if !ordersPending(assets) {
       return
+    } else {
+      log.Println("Orders pending ...")
     }
   }
 }
 
-func shutdownSignalHandler(marketCancel context.CancelFunc, accountCancel context.CancelFunc, assets map[string]map[string]*Asset, db_chan chan *Query) {
+func shutdownHandler(marketCancel context.CancelFunc, accountCancel context.CancelFunc, assets map[string]map[string]*Asset, db_chan chan *Query) {
   sigChan := make(chan os.Signal, 1)
   defer close(sigChan)
   signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -56,7 +58,7 @@ func shutdownSignalHandler(marketCancel context.CancelFunc, accountCancel contex
     case "2":
       log.Println("Saving state and shutting down...")
       marketCancel()
-      checkOrdersPending(assets)
+      stallIfOrdersPending(assets)
       accountCancel()
       db_chan <- nil
       return
@@ -68,11 +70,16 @@ func shutdownSignalHandler(marketCancel context.CancelFunc, accountCancel contex
       case "Y", "y":
         log.Println("Closing all positions and shutting down...")
         // TODO: Check if remove open orders is necessary
-        order.CloseAllPositions(5, 5)
+        order.CloseAllPositions(2, 0)
         marketCancel()
         accountCancel()
-        db_chan <- &Query{Action: "delete_all_positions"}
+        fmt.Println("Do you want to clear the positions table? (y/n)")
+        fmt.Scanln(&input)
+        if input == "Y" || input == "y" {
+          db_chan <- &Query{Action: "delete_all_positions"}
+        }
         db_chan <- nil
+        return
       default :
         NNP.NoNewPositionsFalse("Run")
         log.Println("Shutdown aborted. Resuming...")

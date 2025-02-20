@@ -110,7 +110,7 @@ func checkForZeroVals(assets map[string]*Asset) {
   for _, asset := range assets {
     for i := 0; i < constant.WINDOW_SIZE; i++ {
       if asset.O[i] == 0 || asset.H[i] == 0 || asset.L[i] == 0 || asset.C[i] == 0 {
-        log.Println("[ WARNING ]\tZero value in window")
+        log.Println("[ ERROR ]\tZero values in window")
       }
     }
   }

@@ -4,6 +4,7 @@ import (
   "log"
   "time"
   "sync"
+  "errors"
   "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/order"
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
@@ -37,15 +38,16 @@ func rollFloat(arr *[]float64, v float64) {
 }
 
 func (a *Asset) fillMissingMinutes(t time.Time) {
-  // TODO: 
-  //  -> THIS ONLY WORKS FOR CRYPTO. ASSUMES 24/7 MARKET
-  //    -> Maybe only add synthetic bar if the times are on the same day if stock
-  //  -> Write tests!
-  //  -> Make agnostic to time resolution
+  // TODO: Write tests
   if a.Time.IsZero() {
     return
   }
-  missingMinutes := int(t.Sub(a.Time).Minutes()) -1
+  if a.AssetClass == "stock" {
+    if a.Time.Day() != t.Day() {
+      return
+    }
+  }
+  missingMinutes := int(t.Sub(a.Time).Minutes()) - 1
   if missingMinutes > 0 {
     for i := 0; i < missingMinutes; i++ {
       if a.lastCloseIsTrade {
@@ -96,7 +98,7 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
     L: make([]float64, constant.WINDOW_SIZE),
     C: make([]float64, constant.WINDOW_SIZE),
     strategies: []strategyFunc{
-      (*Asset).testRand,
+      (*Asset).rand,
     },
   }
   a.StartStrategies()
@@ -184,7 +186,12 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
   a.Mutex.Lock()
   defer a.Mutex.Unlock()
   if a.Positions[strat_name] == nil {
-    log.Fatal("Position object is nil for symbol: ", a.Symbol)
+    util.Error(errors.New("Position object is nil for symbol: " + a.Symbol),
+      "StratName", strat_name, "OrderType", order_type, "Side", side, "OrderID", order_id,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
+    order.CloseAllPositions(2, 0)
+    panic("SHUTTING DOWN")
   }
   pos := a.Positions[strat_name]
   pos.Rwm.Lock()

@@ -7,7 +7,7 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
 
-var  globRwm sync.RWMutex
+var globRwm sync.RWMutex
 
 func main() {
   log.Println("Starting AlgoTrader ...")
@@ -26,7 +26,7 @@ func main() {
   assets := prepAssetsMap()
   fillRollingWindows(assets)
 
-  go shutdownSignalHandler(marketCancel, accountCancel, assets, db_chan)
+  go shutdownHandler(marketCancel, accountCancel, assets, db_chan)
 
   wg.Add(1)
   db := NewDatabase(db_chan)
