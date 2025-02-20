@@ -1,13 +1,13 @@
-package src
+package main
 
 import (
   "log"
   "time"
   "sync"
   "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/util/handlelog"
 )
 
 // Moves each element one step to the left, and inserts the new value at the tail.

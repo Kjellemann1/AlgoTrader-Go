@@ -1,14 +1,14 @@
 // Position objects are stored in the Asset object of the given asset.
 // Each asset can have multiple positions, but only one position per strategy.
 
-package src
+package main
 
 import (
   "time"
   "log"
   "sync"
   "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/pretty"
+  "github.com/Kjellemann1/AlgoTrader-Go/util/pretty"
 )
 
 

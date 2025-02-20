@@ -1,4 +1,4 @@
-package src
+package main
 
 import (
   "time"
@@ -8,7 +8,7 @@ import (
   "log"
   "io"
   "github.com/valyala/fastjson"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
 
 func urlHistBars(asset_class string, page_token string) string {

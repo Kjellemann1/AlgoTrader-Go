@@ -5,9 +5,9 @@ import (
   "net/http"
   "log"
 
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/util/backoff"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/util/handlelog"
 )
 
 

@@ -1,4 +1,4 @@
-package src
+package main
 
 import (
   "os"
@@ -9,14 +9,13 @@ import (
   "syscall"
   "context"
 
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/order"
 )
 
 var  globRwm sync.RWMutex
 
-// This is, for all intents and purposes, the main function
-func Run() {
+func main() {
   fmt.Println("Starting AlgoTrader")
   rootCtx, rootCancel := context.WithCancel(context.Background())
   defer rootCancel()

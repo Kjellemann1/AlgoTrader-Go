@@ -1,4 +1,4 @@
-package src
+package main
 
 import (
   "fmt"
@@ -9,10 +9,10 @@ import (
   "database/sql"
   _ "github.com/go-sql-driver/mysql"
   "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/util/backoff"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/util/handlelog"
 )
 
 type Query struct {

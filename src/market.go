@@ -1,4 +1,4 @@
-package src
+package main
 
 import (
   "sync"
@@ -12,10 +12,10 @@ import (
   "github.com/valyala/fastjson"
   "github.com/gorilla/websocket"
 
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/util/backoff"
+  "github.com/Kjellemann1/AlgoTrader-Go/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/order"
 )
 
 type MarketMessage struct {

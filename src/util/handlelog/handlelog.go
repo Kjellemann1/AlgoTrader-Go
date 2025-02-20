@@ -7,7 +7,7 @@ import (
   "runtime"
   "errors"
   "path/filepath"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/push"
+  "github.com/Kjellemann1/AlgoTrader-Go/util/push"
 )
 
 
