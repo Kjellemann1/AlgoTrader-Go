@@ -6,16 +6,18 @@ import (
 )
 
 const (
-  WINDOW_SIZE int = 500
-  ORDER_AMOUNT_USD float64 = 500
   ENDPOINT = "https://paper-api.alpaca.markets/v2"
   WSS_STOCK = "wss://stream.data.alpaca.markets/v2/iex"
   WSS_CRYPTO = "wss://stream.data.alpaca.markets/v1beta3/crypto/us"
+  WINDOW_SIZE int = 500
+  ORDER_AMOUNT_USD float64 = 500
   HIST_DAYS = 1
   HIST_LIMIT = 10000
   HTTP_TIMEOUT_SEC = 5 * time.Second
   MAX_RECEIVED_TIME_DIFF_MS = 100 * time.Millisecond
   MAX_TRIGGER_TIME_DIFF_MS = 100 * time.Millisecond
+  READ_DEADLINE_SEC = 20 * time.Second
+  PING_INTERVAL_SEC = 10 * time.Second
 )
 
 var (

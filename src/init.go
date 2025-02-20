@@ -1,4 +1,4 @@
-package src
+package main
 
 import (
   "log"
@@ -7,7 +7,7 @@ import (
   "io"
   "net/http"
   "github.com/joho/godotenv"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
 
 func init() {

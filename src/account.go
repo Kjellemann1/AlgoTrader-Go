@@ -1,4 +1,4 @@
-package src
+package main
 
 import (
   "fmt"
@@ -9,13 +9,13 @@ import (
   "sync"
   "time"
   "context"
+  "net/http"
   "github.com/gorilla/websocket"
   "github.com/valyala/fastjson"
   "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
 
 type ParsedMessage struct {
@@ -61,11 +61,10 @@ func (a *Account) onAuth(element *fastjson.Value) {
 func (a *Account) messageHandler(message []byte) {
   parsed_msg, err := a.parser.ParseBytes(message)
   if err != nil {
-    log.Println("Error parsing json: ", err)
-    // TODO: Implement error handling
+    util.Error(err)
+    return
   }
 
-  // Handle each message based on the "T" field
   message_type := string(parsed_msg.GetStringBytes("stream"))
   switch message_type {
     case "authorization":
@@ -81,86 +80,36 @@ func (a *Account) messageHandler(message []byte) {
   }
 }
 
-func (a *Account) connect(initial *bool) (err error) {
-  conn, response, err := websocket.DefaultDialer.Dial("wss://paper-api.alpaca.markets/stream", nil)
-  if err != nil && *initial {
-    log.Panicf("[ ERROR ]\tCould not connect to account websocket: %s\n  -> %+v", err, response)
-  } else if err != nil {
-    log.Println("[ ERROR ]\tCould not connect to account websocket: ", err)
+func (a *Account) connect() (err error) {
+  var response *http.Response
+  a.conn, response, err = websocket.DefaultDialer.Dial(
+    "wss://paper-api.alpaca.markets/stream", nil,
+  )
+  if err != nil {
+    log.Println("Response", response.Body)
+    return err
+  }
+  err = a.conn.WriteMessage(websocket.TextMessage, []byte(
+    fmt.Sprintf(`{"action":"auth","key":"%s","secret":"%s"}`, constant.KEY, constant.SECRET),
+  ))
+  if err != nil {
     return
   }
-
-  err = conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"action":"auth","key":"%s","secret":"%s"}`, constant.KEY, constant.SECRET)))
-  if err != nil && *initial {
-    log.Panicf("[ ERROR ]\tSending connection message to account websocket failed: %s", err)
-  } else if err != nil {
-    log.Println("[ ERROR ]\tSending connection message to account websocket failed: ", err)
-    return
-  }
-
-  _, message, err := conn.ReadMessage()
-  if err != nil && *initial {
-    log.Panicf(
-      "[ ERROR ]\tReading connection message from account websocket failed\n" +
-      "  -> Error: %s\n" +
-      "  -> Message: %s",
-      err, message,
-    )
-  } else if err != nil {
-    log.Println("[ ERROR ]\tReading connection message from account websocket failed: ", err)
+  _, message, err := a.conn.ReadMessage()
+  if err != nil {
+    log.Println("Message", string(message))
     return
   }
   a.messageHandler(message)
-
-  err = conn.WriteMessage(websocket.TextMessage, []byte(`{"action":"listen","data":{"streams":["trade_updates"]}}`))
-  if err != nil && *initial {
-    log.Panicf(
-      "[ ERROR ]\tSending listen message to account websocket failed\n" +
-      "  -> Error: %s",
-      err,
-    )
-  } else if err != nil {
-    log.Println("[ ERROR ]\tSending listen message to account websocket failed: ", err)
+  err = a.conn.WriteMessage(websocket.TextMessage,
+    []byte(`{"action":"listen","data":{"streams":["trade_updates"]}}`),
+  )
+  if err != nil {
     return
   }
-
-  a.conn = conn
-  *initial = false
-  return
+  return nil
 }
 
-func (a *Account) ordersPending() bool {
-  for _, class := range a.assets {
-    for _, asset := range class {
-      for _, position := range (*asset).Positions {
-        if position.OpenOrderPending || position.CloseOrderPending {
-          if position.OpenOrderPending {
-            log.Println("Open order pending for:", position.Symbol)
-          } else if position.CloseOrderPending {
-            log.Println("Close order pending for:", position.Symbol)
-          }
-          return true
-        }
-      }
-    }
-  }
-  return false
-}
-
-func (a *Account) checkOrdersPending(ctx context.Context) {
-  ticker := time.NewTicker(5 * time.Second)
-  defer ticker.Stop()
-  <-ctx.Done()
-  for range ticker.C {
-    if a.ordersPending() {
-      continue
-    } else {
-      a.db_chan <- nil
-      a.conn.Close()
-      return
-    }
-  }
-}
 
 func (a *Account) listen(ctx context.Context) {
   for {
@@ -170,7 +119,7 @@ func (a *Account) listen(ctx context.Context) {
       case <-ctx.Done():
         return
       default:
-        handlelog.Error(err)
+        util.Error(err)
         a.conn.Close()
         return
       }
@@ -180,17 +129,19 @@ func (a *Account) listen(ctx context.Context) {
 }
 
 func (a *Account) PingPong(ctx context.Context) {
-  if err := a.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
-    handlelog.Warning(err)
+  if err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
+    util.Warning(err)
   }
 
   a.conn.SetPongHandler(func(string) error {
-    a.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+    a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC))
     return nil
   })
 
-  ticker := time.NewTicker(30 * time.Second)
+  ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
+  log.Println("[ OK ]\tPingPong initiated for account websocket")
+
   for {
     select {
     case <-ctx.Done():
@@ -199,7 +150,7 @@ func (a *Account) PingPong(ctx context.Context) {
       if err := a.conn.WriteControl(
         websocket.PingMessage, []byte("ping"), 
         time.Now().Add(5 * time.Second)); err != nil {
-        handlelog.Warning(err)
+        util.Warning(err)
         return
       }
     }
@@ -208,38 +159,41 @@ func (a *Account) PingPong(ctx context.Context) {
 
 func (a *Account) Start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
-  go a.checkOrdersPending(ctx)
-
   backoff_sec := 5
   retries := 0
   initial := true
+
   for {
     select {
     case <-ctx.Done():
       return
     default:
-      err := a.connect(&initial)
-      if err != nil {
+      if err := a.connect() ; err != nil {
+        if initial {
+          panic(err.Error())
+        }
         if retries < 5 {
-          handlelog.Error(err, "Retries", retries)
+          util.Error(err, "Retries", retries)
         } else {
-          handlelog.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+          util.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
           order.CloseAllPositions(2, 0)
           log.Panic("SHUTTING DOWN")
         }
-        backoff.Backoff(&backoff_sec)
+        util.Backoff(&backoff_sec)
         retries++
         continue
       }
-    }
 
-    backoff_sec = 5
-    retries = 0
-    go a.listen(ctx)
-    a.PingPong(ctx)
-    a.conn.Close()
-    // TODO: On reconnect, check that positions on the server are the same as locally
-    //   -> Make sure we didn't miss any updates
+      initial = false
+      backoff_sec = 5
+      retries = 0
+
+      go a.listen(ctx)
+      a.PingPong(ctx)
+      a.conn.Close()
+      // TODO: On reconnect, check that positions on the server are the same as locally
+      //   -> Make sure we didn't miss any updates
+    }
   }
 }
 
@@ -249,7 +203,7 @@ func (p *ParsedMessage) getEvent() *string {
   // Other events are likely not relevant. https://alpaca.markets/docs/api-documentation/api-v2/streaming/
   event := p.Get("data").GetStringBytes("event")
   if event == nil {
-    handlelog.Error(
+    util.Error(
       errors.New("EVENT NOT IN TRADE UPDATE"), "Parsed message", p.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
@@ -267,7 +221,7 @@ func (p *ParsedMessage) getStratName() *string {
   // Return if nil 
   position_id := p.Get("data").Get("order").GetStringBytes("client_order_id")  // client_order_id == PositionID
   if position_id == nil {
-    handlelog.Warning(errors.New("PositionID not found in order update"), nil)
+    util.Warning(errors.New("PositionID not found in order update"), nil)
     return nil
   }
   position_id_str := string(position_id)
@@ -284,7 +238,7 @@ func (p *ParsedMessage) getAssetClass() *string {
   // Shutdown if nil
   asset_class := p.Get("data").Get("order").GetStringBytes("asset_class")
   if asset_class == nil {
-    handlelog.Error(
+    util.Error(
       errors.New("ASSET CLASS NOT IN TRADE UPDATE"), "Parsed message", p.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
@@ -299,10 +253,10 @@ func (p *ParsedMessage) getAssetClass() *string {
 }
 
 func (p *ParsedMessage) getSymbol() *string {
-  // Return if nil
+  // Return if nil, shutdown if fails
   symbol := p.Get("data").Get("order").GetStringBytes("symbol")
   if symbol == nil {
-    handlelog.Error(
+    util.Error(
       errors.New("SYMBOL NOT IN TRADE UPDATE"), "Parsed message", p.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
@@ -330,7 +284,7 @@ func (p *ParsedMessage) getAssetQty() *decimal.Decimal {
   }
   asset_qty_dec, err := decimal.NewFromString(string(asset_qty))
   if err != nil {
-    handlelog.Error(err, "Asset qty", asset_qty, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+    util.Error(err, "Asset qty", asset_qty, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
     order.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
@@ -344,7 +298,7 @@ func (p *ParsedMessage) getFillTime() *time.Time {
   }
   fill_time_t, err := time.Parse(time.RFC3339, string(fill_time))
   if err != nil {
-    handlelog.Warning(errors.New("Failed to convert fill_time to time.Time in update"))
+    util.Warning(errors.New("Failed to convert fill_time to time.Time in update"))
   }
   return &fill_time_t
 }
@@ -356,7 +310,7 @@ func (p *ParsedMessage) getFilledAvgPrice() *float64 {
   }
   filled_avg_price_float, err := strconv.ParseFloat(string(filled_avg_price), 8)
   if err != nil {
-    handlelog.Warning(errors.New("Failed to convert filled_avg_price to float in order update"))
+    util.Warning(errors.New("Failed to convert filled_avg_price to float in order update"))
   }
   return &filled_avg_price_float
 }
@@ -389,20 +343,55 @@ func (a *Account) updateParser(p *ParsedMessage) *OrderUpdate {
   }
 }
 
-func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
+func updateAssetQty(p *Position, a *Asset, u *OrderUpdate) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
   var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
   p.Qty = p.Qty.Add(position_change)
   a.AssetQty = *u.AssetQty
   if !a.SumPosQtyEqAssetQty() {
-    handlelog.Error(
+    util.Error(
       errors.New("Sum of position qty not equal to asset qty"),
       "Asset", a.AssetQty, "Position", p.Qty, "OrderUpdate", u,
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
     order.CloseAllPositions(2, 0)
     log.Fatal("SHUTTING DOWN")
+  }
+}
+
+func (a *Account) closeLogic(asset *Asset, pos *Position, u *OrderUpdate) {
+  if u.FilledAvgPrice != nil {
+    pos.CloseFilledAvgPrice = *u.FilledAvgPrice
+  }
+  if u.FillTime != nil {
+    pos.CloseFillTime = *u.FillTime
+  }
+  if *u.Event == "fill" || *u.Event == "canceled" {
+    a.db_chan <-pos.LogClose(*u.StratName)
+    if pos.Qty.IsZero() {
+      asset.RemovePosition(*u.StratName)
+    } else {
+      pos.CloseOrderPending = false
+      asset.Close("IOC", *u.StratName)
+    }
+  }
+}
+
+func (a *Account) openLogic(asset *Asset, pos *Position, u *OrderUpdate) {
+  if u.FilledAvgPrice != nil {
+    pos.OpenFilledAvgPrice = *u.FilledAvgPrice
+  }
+  if u.FillTime != nil {
+    pos.OpenFillTime = *u.FillTime
+  }
+  if *u.Event == "fill" || *u.Event == "canceled" {
+    if pos.Qty.IsZero() {
+      asset.RemovePosition(*u.StratName)
+    } else {
+      a.db_chan <-pos.LogOpen(*u.StratName)
+      pos.OpenOrderPending = false
+    }
   }
 }
 
@@ -414,42 +403,12 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   }
   pos.Rwm.Lock()
   defer pos.Rwm.Unlock()
-  // Update AssetQty
   if u.AssetQty != nil {
-    calculatePositionQty(pos, asset, u)
+    updateAssetQty(pos, asset, u)
   }
-  // Open order logic
   if pos.OpenOrderPending {
-    if u.FilledAvgPrice != nil {
-      pos.OpenFilledAvgPrice = *u.FilledAvgPrice
-    }
-    if u.FillTime != nil {
-      pos.OpenFillTime = *u.FillTime
-    }
-    if *u.Event == "fill" || *u.Event == "canceled" {
-      if pos.Qty.IsZero() {
-        asset.RemovePosition(*u.StratName)
-      } else {
-        a.db_chan <-pos.LogOpen(*u.StratName)
-        pos.OpenOrderPending = false
-      }
-    }
-  // Close order logic
+    a.openLogic(asset, pos, u)
   } else if pos.CloseOrderPending {
-    if u.FilledAvgPrice != nil {
-      pos.CloseFilledAvgPrice = *u.FilledAvgPrice
-    }
-    if u.FillTime != nil {
-      pos.CloseFillTime = *u.FillTime
-    }
-    if *u.Event == "fill" || *u.Event == "canceled" {
-      a.db_chan <-pos.LogClose(*u.StratName)
-      if pos.Qty.IsZero() {
-        asset.RemovePosition(*u.StratName)
-      } else {
-        pos.CloseOrderPending = false
-        asset.Close("IOC", *u.StratName)
-      }
-    }
+    a.closeLogic(asset, pos, u)
   }
 }

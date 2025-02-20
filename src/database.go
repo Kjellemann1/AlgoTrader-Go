@@ -1,4 +1,4 @@
-package src
+package main
 
 import (
   "fmt"
@@ -9,21 +9,20 @@ import (
   "database/sql"
   _ "github.com/go-sql-driver/mysql"
   "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/backoff"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/util"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/order"
 )
 
 type Query struct {
   Action            string
-  PositionID        string
+  PositionID        string  // "client_order_id"
   Symbol            string
   AssetClass        string
   Side              string  // "buy", "sell"
   StratName         string
   OrderType         string
-  Qty               decimal.Decimal  // Stored as a string to avoid floating point errors
+  Qty               decimal.Decimal
   PriceTime         time.Time
   ReceivedTime      time.Time
   TriggerTime       time.Time
@@ -46,7 +45,12 @@ type Database struct {
   update_n_close_orders *sql.Stmt
 }
 
-// Prepare queries so they don't have to be created every for every query
+func NewDatabase(db_chan chan *Query) (db *Database) {
+  db = &Database{}
+  db.db_chan = db_chan
+  return
+}
+
 func (db *Database) prepQueries() error {
   var err error
   db.insert_trade, err = db.conn.Prepare(`
@@ -116,8 +120,8 @@ func (db *Database) prepQueries() error {
   return nil
 }
 
-// Reestablish connection if lost
 func (db *Database) pingAndSetupQueries() error {
+  // Ping() automatically tries to establish a connection if necessary
   err := db.conn.Ping()
   if err != nil {
     return err
@@ -130,41 +134,36 @@ func (db *Database) pingAndSetupQueries() error {
 }
 
 func (db *Database) errorHandler(
-  // TODO: Implement specific error handling for bad queries
   err error, func_name string, response sql.Result, query *Query, retries int, backoff_sec *int,
 ) {
-  handlelog.Warning2(err, "Query", *query, "Response", response, "Retries", retries)
-  // Ping database. Ping() should automatically try to reconnect if the connection is lost (if I understood the docs correctly)
+  util.Warning2(err, "Query", *query, "Response", response, "Retries", retries)
   err = db.pingAndSetupQueries()
   if err != nil {
     NNP.NoNewPositionsTrue("Database")
-    if retries <= 3 {  // Too many retries here could lead to stack overflow as a result of recursion
-      handlelog.Warning(err, "Setting NO_NEW_TRADES == true", "Retrying in (seconds)", *backoff_sec)
-      backoff.Backoff(backoff_sec)
+    if retries <= 3 {
+      util.Warning(err, "Setting NO_NEW_TRADES == true", "Retrying in (seconds)", *backoff_sec)
+      util.Backoff(backoff_sec)
       db.errorHandler(err, func_name, response, query, retries + 1, backoff_sec)
     } else {
-      handlelog.Error(err, "MAX RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+      util.Error(err, "MAX RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
       order.CloseAllPositions(2, 0)
       log.Panicln("SHUTTING DOWN")
     }
   }
-  // If connection is successful, try to execute the query again
   if retries > 3 {
-    handlelog.Warning(nil, "MAX RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+    util.Warning(nil, "MAX RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
     order.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
   db.queryHandler(query, *backoff_sec, retries + 1)
-  // This code is not reached if the insert fails
-  // TODO: Don't know if the "number of retries" here is correct like isnt it a always at least 1 retry?
+  // Code below is not reached if query fails
   if retries > 0 {
-    handlelog.Info("Query successful after retries", "Retries", retries)
+    util.Info("Query successful after retries", "Retries", retries + 1)
   }
-  handlelog.Info("Query successful")
+  util.Info("Query successful")
   NNP.NoNewPositionsFalse("Database")
 }
 
-// TODO: Change queries so they are correct(but have to see how the database is structured first)
 func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
   response, err := db.insert_trade.Exec(
     query.Action,
@@ -246,7 +245,7 @@ func (db *Database) updateNCloseOrders(query *Query, backoff_sec int, retries in
 func (db *Database) retrievePositions() {
   response, err := db.conn.Query("SELECT * FROM positions;")
   if err != nil {
-    handlelog.Error(err, "retrievePositions")
+    util.Error(err, "retrievePositions")
   }
   defer response.Close()
   for response.Next() {
@@ -274,12 +273,11 @@ func (db *Database) retrievePositions() {
       &nCloseOrders,
     )
     if err != nil {
-      handlelog.Error(err, "retrievePositions")
+      util.Error(err, "retrievePositions")
     }
     fmt.Println(positionID, symbol, assetClass, side, stratName, orderType, qty, priceTime, receivedTime, triggerTime, triggerPrice, fillTime, filledAvgPrice, trailingStop, badForAnalysis, nCloseOrders)
   }
 }
-
 
 func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
   switch query.Action {
@@ -300,7 +298,7 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
     case "retrieve_positions":
       db.retrievePositions()
     default:
-      handlelog.Error(errors.New("Invalid query type"), "Query", query)
+      util.Error(errors.New("Invalid query type"), "Query", query)
   }
 }
 
@@ -325,13 +323,6 @@ func (db *Database) connect() {
   }
 }
 
-// Constructor
-func NewDatabase(db_chan chan *Query) (db *Database) {
-  db = &Database{}
-  db.db_chan = db_chan
-  return
-}
-
 func (db *Database) Start(wg *sync.WaitGroup, assets map[string]map[string]*Asset) {
   defer wg.Done()
   db.connect()
@@ -349,7 +340,7 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
   defer globRwm.Unlock()
   response, err := db.conn.Query("SELECT * FROM positions;")
   if err != nil {
-    handlelog.ErrorPanic(err)
+    util.ErrorPanic(err)
   }
   defer response.Close()
   for response.Next() {

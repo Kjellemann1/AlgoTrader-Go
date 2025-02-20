@@ -1,4 +1,4 @@
-package src
+package main
 
 import (
   "time"
@@ -8,7 +8,7 @@ import (
   "log"
   "io"
   "github.com/valyala/fastjson"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
 
 func urlHistBars(asset_class string, page_token string) string {
@@ -59,7 +59,13 @@ func makeRequest(asset_class string, page_token string) *fastjson.Value {
   return parsed
 }
 
-func GetHistBars(assets map[string]*Asset, asset_class string) {
+func fillRollingWindows (assets map[string]map[string]*Asset) {
+  for k, v := range assets {
+    getHistBars(v, k)
+  }
+}
+
+func getHistBars(assets map[string]*Asset, asset_class string) {
   var arr []*fastjson.Value
   page_token := "start"
   for page_token != "" {
@@ -70,7 +76,7 @@ func GetHistBars(assets map[string]*Asset, asset_class string) {
   temp_time := time.Now().UTC()
   for _, bars := range arr {
     if bars == nil {
-      fmt.Println("Bars is nil")
+      log.Println("[ WARNING ]\tBars is nil")
       continue
     }
     obj, err := bars.Object()
@@ -84,7 +90,7 @@ func GetHistBars(assets map[string]*Asset, asset_class string) {
       x := value.GetArray()
       for _, bar := range x {
         t, _ := time.Parse("2006-01-02T15:04:05Z", string(bar.GetStringBytes("t")))
-        assets[string(symbol)].UpdateWindowOnBar(
+        assets[string(symbol)].updateWindowOnBar(
           bar.GetFloat64("o"),
           bar.GetFloat64("h"),
           bar.GetFloat64("l"),
@@ -95,5 +101,17 @@ func GetHistBars(assets map[string]*Asset, asset_class string) {
       }
     })
   }
+
+  checkForZeroVals(assets)
 }
-// TODO: Add check that none of the prices are zero since the API returnes zero in place of missing data
+
+func checkForZeroVals(assets map[string]*Asset) {
+  // API returns zero in place of missing data
+  for _, asset := range assets {
+    for i := 0; i < constant.WINDOW_SIZE; i++ {
+      if asset.O[i] == 0 || asset.H[i] == 0 || asset.L[i] == 0 || asset.C[i] == 0 {
+        log.Println("[ ERROR ]\tZero values in window")
+      }
+    }
+  }
+}

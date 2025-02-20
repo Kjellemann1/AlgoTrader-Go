@@ -1,14 +1,35 @@
-package src
+package main
 
 import (
   "log"
   "time"
   "sync"
+  "errors"
   "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/order"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
+
+func prepAssetsMap() map[string]map[string]*Asset {
+  assets := make(map[string]map[string]*Asset)
+
+  if len(constant.STOCK_LIST) > 0 {
+    assets["stock"] = make(map[string]*Asset)
+    for _, symbol := range constant.STOCK_LIST {
+      assets["stock"][symbol] = NewAsset("stock", symbol)
+    }
+  }
+
+  if len(constant.CRYPTO_LIST) > 0 {
+    assets["crypto"] = make(map[string]*Asset)
+    for _, symbol := range constant.CRYPTO_LIST {
+      assets["crypto"][symbol] = NewAsset("crypto", symbol)
+    }
+  }
+
+  return assets
+}
 
 // Moves each element one step to the left, and inserts the new value at the tail.
 func rollFloat(arr *[]float64, v float64) {
@@ -17,13 +38,15 @@ func rollFloat(arr *[]float64, v float64) {
 }
 
 func (a *Asset) fillMissingMinutes(t time.Time) {
-  // TODO: Write test for this!!!
-  // TODO: THIS ONLY WORKS FOR CRYPTO. ASSUMES 24/7 MARKET
-  //  -> Maybe only add synthetic bar if the times are on the same day if stock
   if a.Time.IsZero() {
     return
   }
-  missingMinutes := int(t.Sub(a.Time).Minutes()) -1
+  if a.AssetClass == "stock" {
+    if a.Time.Day() != t.Day() {
+      return
+    }
+  }
+  missingMinutes := int(t.Sub(a.Time).Minutes()) - 1
   if missingMinutes > 0 {
     for i := 0; i < missingMinutes; i++ {
       if a.lastCloseIsTrade {
@@ -74,17 +97,7 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
     L: make([]float64, constant.WINDOW_SIZE),
     C: make([]float64, constant.WINDOW_SIZE),
     strategies: []strategyFunc{
-      // (*Asset).EMACrossRSI,
-      // (*Asset).RSIMiddle,
-      // (*Asset).testCool,
-      (*Asset).testRand,
-      // (*Asset).testRSI,
-      // (*Asset).testSMA,
-      // (*Asset).testBBands,
-      // (*Asset).testMomentum,
-      // (*Asset).testRSI1,
-      // (*Asset).testRSI2,
-      // (*Asset).testRSI3,
+      (*Asset).rand,
     },
   }
   a.StartStrategies()
@@ -112,7 +125,7 @@ func (a *Asset) CheckForSignal() {
   }
 }
 
-func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t time.Time, received_time time.Time) {
+func (a *Asset) updateWindowOnBar(o float64, h float64, l float64, c float64, t time.Time, received_time time.Time) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
   a.fillMissingMinutes(t)
@@ -130,7 +143,7 @@ func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t 
   a.lastCloseIsTrade = false
 }
 
-func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
+func (a *Asset) updateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
   if a.lastCloseIsTrade {
@@ -172,7 +185,12 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
   a.Mutex.Lock()
   defer a.Mutex.Unlock()
   if a.Positions[strat_name] == nil {
-    log.Fatal("Position object is nil for symbol: ", a.Symbol)
+    util.Error(errors.New("Position object is nil for symbol: " + a.Symbol),
+      "StratName", strat_name, "OrderType", order_type, "Side", side, "OrderID", order_id,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
+    order.CloseAllPositions(2, 0)
+    panic("SHUTTING DOWN")
   }
   pos := a.Positions[strat_name]
   pos.Rwm.Lock()
@@ -200,7 +218,7 @@ func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string,
     case "IOC":
       err = order.OpenLongIOC(symbol, asset_class, order_id, last_close)
       if err != nil {
-        return err
+        return
       }
   }
   return
@@ -227,53 +245,65 @@ func (a *Asset) I(num int) (index int) {
 	return
 }
 
-func (a *Asset) IndexArray(arr *[]float64, from int, to int) (slice []float64) {
+func (a *Asset) S(arr *[]float64, from int, to int) (slice []float64) {
   slice = (*arr)[(constant.WINDOW_SIZE - 1 - to):(constant.WINDOW_SIZE - from)]
   return
 }
 
 func (a *Asset) Open(side string, order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
+
   if _, ok := a.Positions[strat_name]; ok {
     log.Println("[ INFO ]\tOpen cancelled since trade already exists", a.Symbol)
     return
   }
+
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
-    log.Println("[ INFO ]\tOpen cancelled due received time diff too large", a.Symbol)
+    log.Println("[ INFO ]\tOpen cancelled due to received time diff too large", a.Symbol)
     return
   } 
+
   if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF_MS {
-    log.Println("[ INFO ]\tOpen cancelled due trigger time diff too large", a.Symbol)
+    log.Println("[ INFO ]\tOpen cancelled due to trigger time diff too large", a.Symbol)
     return
   }
+
   if NNP.Flag == true {
     return
   }
+
   last_close := a.C[constant.WINDOW_SIZE-1]
   symbol := a.Symbol
   order_id := a.createPositionID(strat_name)
   asset_class := a.AssetClass
   a.Mutex.Unlock()
+
   a.initiatePositionObject(strat_name, order_type, side, order_id, trigger_time)
   err := a.sendOpenOrder(order_type, order_id, symbol, asset_class, last_close)
   if err != nil {
-    handlelog.Warning(err, "Symbol", symbol, "Strat", strat_name, "OrderType", order_type, "Side", side)
+    util.Warning(err, "Symbol", symbol, "Strat", strat_name, "OrderType", order_type, "Side", side)
     a.RemovePosition(strat_name)
   }
+
   a.Mutex.Lock()
 }
 
 func (a *Asset) Close(order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
+
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
+
   pos := a.Positions[strat_name]
   pos.Rwm.Lock()
+
   if pos.CloseOrderPending || pos.OpenOrderPending {
+    log.Println("[ INFO ]\tClose cancelled due to order pending", a.Symbol)
     pos.Rwm.Unlock()
     return
   }
+
   open_side := pos.OpenSide
   symbol := pos.Symbol
   qty := pos.Qty
@@ -285,9 +315,10 @@ func (a *Asset) Close(order_type string, strat_name string) {
   pos.ClosePriceTime = a.Time
   pos.ClosePriceReceivedTime = a.ReceivedTime
   pos.Rwm.Unlock()
+
   err := a.sendCloseOrder(open_side, order_type, order_id, symbol, qty)
   if err != nil {
-    handlelog.Error(err, symbol, order_id)
+    util.Error(err, symbol, order_id)
     return
   }
 }
@@ -299,10 +330,12 @@ func (a *Asset) StopLoss(percent float64, strat_name string) {
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
+
   fill_price := a.Positions[strat_name].OpenFilledAvgPrice
   if fill_price == 0 {
     return
   }
+
   dev := (fill_price / a.C[a.I(0)] - 1) * 100
   if dev < (percent * -1) {
     a.Close("IOC", strat_name)
@@ -317,10 +350,12 @@ func (a *Asset) TakeProfit(percent float64, strat_name string) {
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
+
   fill_price := a.Positions[strat_name].OpenFilledAvgPrice
   if fill_price == 0 {
     return
   }
+
   dev := (fill_price / a.C[a.I(0)] - 1) * 100
   if dev > percent {
     a.Close("IOC", strat_name)
@@ -329,5 +364,6 @@ func (a *Asset) TakeProfit(percent float64, strat_name string) {
 }
 
 func (a *Asset) TrailingStop() {
-  panic("TrailingStop not implemented")
+  log.Println("[ INFO ]\tTrailingStop not implemented")
+  return
 }

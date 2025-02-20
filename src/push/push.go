@@ -6,7 +6,7 @@ import (
   "bytes"
   "net/http"
 
-  "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
 
 func push(message string, title string, prio int) {
