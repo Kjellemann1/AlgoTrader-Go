@@ -9,9 +9,12 @@ import (
   "sync"
   "time"
   "context"
+  "net/http"
+
   "github.com/gorilla/websocket"
   "github.com/valyala/fastjson"
   "github.com/shopspring/decimal"
+
   "github.com/Kjellemann1/AlgoTrader-Go/src/constant"
   "github.com/Kjellemann1/AlgoTrader-Go/src/order"
   "github.com/Kjellemann1/AlgoTrader-Go/src/util/handlelog"
@@ -61,11 +64,9 @@ func (a *Account) onAuth(element *fastjson.Value) {
 func (a *Account) messageHandler(message []byte) {
   parsed_msg, err := a.parser.ParseBytes(message)
   if err != nil {
-    log.Println("Error parsing json: ", err)
-    // TODO: Implement error handling
+    handlelog.Error(err)
+    return
   }
-
-  // Handle each message based on the "T" field
   message_type := string(parsed_msg.GetStringBytes("stream"))
   switch message_type {
     case "authorization":
@@ -81,52 +82,34 @@ func (a *Account) messageHandler(message []byte) {
   }
 }
 
-func (a *Account) connect(initial *bool) (err error) {
-  conn, response, err := websocket.DefaultDialer.Dial("wss://paper-api.alpaca.markets/stream", nil)
-  if err != nil && *initial {
-    log.Panicf("[ ERROR ]\tCould not connect to account websocket: %s\n  -> %+v", err, response)
-  } else if err != nil {
-    log.Println("[ ERROR ]\tCould not connect to account websocket: ", err)
+func (a *Account) connect() (err error) {
+  var response *http.Response
+  a.conn, response, err = websocket.DefaultDialer.Dial(
+    "wss://paper-api.alpaca.markets/stream", nil,
+  )
+  if err != nil {
+    log.Println("Response", response.Body)
+    return err
+  }
+  err = a.conn.WriteMessage(websocket.TextMessage, []byte(
+    fmt.Sprintf(`{"action":"auth","key":"%s","secret":"%s"}`, constant.KEY, constant.SECRET),
+  ))
+  if err != nil {
     return
   }
-
-  err = conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"action":"auth","key":"%s","secret":"%s"}`, constant.KEY, constant.SECRET)))
-  if err != nil && *initial {
-    log.Panicf("[ ERROR ]\tSending connection message to account websocket failed: %s", err)
-  } else if err != nil {
-    log.Println("[ ERROR ]\tSending connection message to account websocket failed: ", err)
-    return
-  }
-
-  _, message, err := conn.ReadMessage()
-  if err != nil && *initial {
-    log.Panicf(
-      "[ ERROR ]\tReading connection message from account websocket failed\n" +
-      "  -> Error: %s\n" +
-      "  -> Message: %s",
-      err, message,
-    )
-  } else if err != nil {
-    log.Println("[ ERROR ]\tReading connection message from account websocket failed: ", err)
+  _, message, err := a.conn.ReadMessage()
+  if err != nil {
+    log.Println("Message", string(message))
     return
   }
   a.messageHandler(message)
-
-  err = conn.WriteMessage(websocket.TextMessage, []byte(`{"action":"listen","data":{"streams":["trade_updates"]}}`))
-  if err != nil && *initial {
-    log.Panicf(
-      "[ ERROR ]\tSending listen message to account websocket failed\n" +
-      "  -> Error: %s",
-      err,
-    )
-  } else if err != nil {
-    log.Println("[ ERROR ]\tSending listen message to account websocket failed: ", err)
+  err = a.conn.WriteMessage(websocket.TextMessage,
+    []byte(`{"action":"listen","data":{"streams":["trade_updates"]}}`),
+  )
+  if err != nil {
     return
   }
-
-  a.conn = conn
-  *initial = false
-  return
+  return nil
 }
 
 func (a *Account) ordersPending() bool {
@@ -134,11 +117,6 @@ func (a *Account) ordersPending() bool {
     for _, asset := range class {
       for _, position := range (*asset).Positions {
         if position.OpenOrderPending || position.CloseOrderPending {
-          if position.OpenOrderPending {
-            log.Println("Open order pending for:", position.Symbol)
-          } else if position.CloseOrderPending {
-            log.Println("Close order pending for:", position.Symbol)
-          }
           return true
         }
       }
@@ -209,17 +187,19 @@ func (a *Account) PingPong(ctx context.Context) {
 func (a *Account) Start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
   go a.checkOrdersPending(ctx)
-
   backoff_sec := 5
   retries := 0
   initial := true
+
   for {
     select {
     case <-ctx.Done():
       return
     default:
-      err := a.connect(&initial)
-      if err != nil {
+      if err := a.connect() ; err != nil {
+        if initial {
+          panic(err.Error())
+        }
         if retries < 5 {
           handlelog.Error(err, "Retries", retries)
         } else {
@@ -231,15 +211,17 @@ func (a *Account) Start(wg *sync.WaitGroup, ctx context.Context) {
         retries++
         continue
       }
-    }
 
-    backoff_sec = 5
-    retries = 0
-    go a.listen(ctx)
-    a.PingPong(ctx)
-    a.conn.Close()
-    // TODO: On reconnect, check that positions on the server are the same as locally
-    //   -> Make sure we didn't miss any updates
+      initial = false
+      backoff_sec = 5
+      retries = 0
+
+      go a.listen(ctx)
+      a.PingPong(ctx)
+      a.conn.Close()
+      // TODO: On reconnect, check that positions on the server are the same as locally
+      //   -> Make sure we didn't miss any updates
+    }
   }
 }
 
