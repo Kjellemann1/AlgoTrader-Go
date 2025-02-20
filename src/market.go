@@ -11,10 +11,9 @@ import (
   "context"
   "github.com/valyala/fastjson"
   "github.com/gorilla/websocket"
-
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
   "github.com/Kjellemann1/AlgoTrader-Go/util"
-  "github.com/Kjellemann1/AlgoTrader-Go/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/request"
 )
 
 type MarketMessage struct {
@@ -105,7 +104,7 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.T
     t,
     received_time,
   )
-  asset.CheckForSignal()
+  asset.checkForSignal()
 }
 
 func (m *Market) onMarketTradeUpdate(element *fastjson.Value, received_time time.Time) {
@@ -115,7 +114,7 @@ func (m *Market) onMarketTradeUpdate(element *fastjson.Value, received_time time
   price := element.GetFloat64("p")
   asset := m.assets[symbol]
   asset.updateWindowOnTrade(price, t, received_time)
-  asset.CheckForSignal()
+  asset.checkForSignal()
 }
 
 func (m *Market) parseMessage(mm MarketMessage) (*fastjson.Value, error) {
@@ -273,7 +272,7 @@ func (m *Market) Start(wg *sync.WaitGroup, ctx context.Context) {
             "MAXIMUM NUMBER OF RETRIES REACHED", retries, 
             "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
           )
-          order.CloseAllPositions(2, 0)
+          request.CloseAllPositions(2, 0)
           log.Panic("SHUTTING DOWN")
         }
         util.Backoff(&backoff_sec)

@@ -6,7 +6,7 @@ import (
   "sync"
   "errors"
   "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/request"
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
   "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
@@ -17,14 +17,14 @@ func prepAssetsMap() map[string]map[string]*Asset {
   if len(constant.STOCK_LIST) > 0 {
     assets["stock"] = make(map[string]*Asset)
     for _, symbol := range constant.STOCK_LIST {
-      assets["stock"][symbol] = NewAsset("stock", symbol)
+      assets["stock"][symbol] = newAsset("stock", symbol)
     }
   }
 
   if len(constant.CRYPTO_LIST) > 0 {
     assets["crypto"] = make(map[string]*Asset)
     for _, symbol := range constant.CRYPTO_LIST {
-      assets["crypto"][symbol] = NewAsset("crypto", symbol)
+      assets["crypto"][symbol] = newAsset("crypto", symbol)
     }
   }
 
@@ -85,7 +85,7 @@ type Asset struct {
   Mutex             sync.Mutex
 }
 
-func NewAsset(asset_class string, symbol string) (a *Asset) {
+func newAsset(asset_class string, symbol string) (a *Asset) {
   a = &Asset{
     lastCloseIsTrade: false,
     Positions: make(map[string]*Position),
@@ -100,11 +100,11 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
       (*Asset).rand,
     },
   }
-  a.StartStrategies()
+  a.startStrategies()
   return
 }
 
-func (a *Asset) StartStrategies() {
+func (a *Asset) startStrategies() {
   n := len(a.strategies)
   a.channels = make([]chan struct{}, n)
   for i := 0; i < n; i++ {
@@ -117,7 +117,7 @@ func (a *Asset) StartStrategies() {
   }
 }
 
-func (a *Asset) CheckForSignal() {
+func (a *Asset) checkForSignal() {
   for i := range a.channels {
     if i >= 0 && i < len(a.channels) {
       a.channels[i] <- struct{}{}
@@ -156,7 +156,7 @@ func (a *Asset) updateWindowOnTrade(c float64, t time.Time, received_time time.T
   a.lastCloseIsTrade = true
 }
 
-func (a *Asset) SumPosQtyEqAssetQty() bool {
+func (a *Asset) sumPosQtyEqAssetQty() bool {
   count, _ := decimal.NewFromString("0")
   for _, val := range a.Positions {
     count = count.Add(val.Qty)
@@ -189,7 +189,7 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
       "StratName", strat_name, "OrderType", order_type, "Side", side, "OrderID", order_id,
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
-    order.CloseAllPositions(2, 0)
+    request.CloseAllPositions(2, 0)
     panic("SHUTTING DOWN")
   }
   pos := a.Positions[strat_name]
@@ -207,7 +207,7 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
   pos.OpenPriceReceivedTime = a.ReceivedTime
 }
 
-func (a *Asset) RemovePosition(strat_name string) {
+func (a *Asset) removePosition(strat_name string) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
   delete(a.Positions, strat_name)
@@ -216,7 +216,7 @@ func (a *Asset) RemovePosition(strat_name string) {
 func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string, asset_class string, last_close float64) (err error) {
   switch order_type {
     case "IOC":
-      err = order.OpenLongIOC(symbol, asset_class, order_id, last_close)
+      err = request.OpenLongIOC(symbol, asset_class, order_id, last_close)
       if err != nil {
         return
       }
@@ -234,23 +234,23 @@ func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, sy
   }
   switch order_type {
     case "IOC":
-      err = order.CloseIOC(side, symbol, order_id, qty)
+      err = request.CloseIOC(side, symbol, order_id, qty)
   }
   return
 }
 
 // Methods below this point are for being called from strategy functions
-func (a *Asset) I(num int) (index int) {
+func (a *Asset) i(num int) (index int) {
 	index = constant.WINDOW_SIZE - 1 - num
 	return
 }
 
-func (a *Asset) S(arr *[]float64, from int, to int) (slice []float64) {
+func (a *Asset) s(arr *[]float64, from int, to int) (slice []float64) {
   slice = (*arr)[(constant.WINDOW_SIZE - 1 - to):(constant.WINDOW_SIZE - from)]
   return
 }
 
-func (a *Asset) Open(side string, order_type string, strat_name string) {
+func (a *Asset) open(side string, order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
 
   if _, ok := a.Positions[strat_name]; ok {
@@ -282,13 +282,13 @@ func (a *Asset) Open(side string, order_type string, strat_name string) {
   err := a.sendOpenOrder(order_type, order_id, symbol, asset_class, last_close)
   if err != nil {
     util.Warning(err, "Symbol", symbol, "Strat", strat_name, "OrderType", order_type, "Side", side)
-    a.RemovePosition(strat_name)
+    a.removePosition(strat_name)
   }
 
   a.Mutex.Lock()
 }
 
-func (a *Asset) Close(order_type string, strat_name string) {
+func (a *Asset) close(order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
 
   if _, ok := a.Positions[strat_name]; !ok {
@@ -323,7 +323,7 @@ func (a *Asset) Close(order_type string, strat_name string) {
   }
 }
 
-func (a *Asset) StopLoss(percent float64, strat_name string) {
+func (a *Asset) stopLoss(percent float64, strat_name string) {
   // TODO:
   //   -> Log if stop loss triggered to db
   //   -> Implement logic for short positions
@@ -336,14 +336,14 @@ func (a *Asset) StopLoss(percent float64, strat_name string) {
     return
   }
 
-  dev := (fill_price / a.C[a.I(0)] - 1) * 100
+  dev := (fill_price / a.C[a.i(0)] - 1) * 100
   if dev < (percent * -1) {
-    a.Close("IOC", strat_name)
+    a.close("IOC", strat_name)
     log.Printf("[ INFO ]\tStopLoss\t%s\t%s", a.Symbol, strat_name)
   }
 }
 
-func (a *Asset) TakeProfit(percent float64, strat_name string) {
+func (a *Asset) takeProfit(percent float64, strat_name string) {
   // TODO:
   //   -> Log if take profit triggered to db
   //   -> Implement logic for short positions
@@ -356,14 +356,15 @@ func (a *Asset) TakeProfit(percent float64, strat_name string) {
     return
   }
 
-  dev := (fill_price / a.C[a.I(0)] - 1) * 100
+  dev := (fill_price / a.C[a.i(0)] - 1) * 100
   if dev > percent {
-    a.Close("IOC", strat_name)
+    a.close("IOC", strat_name)
     log.Printf("[ INFO ]\tTakeProfit\t%s\t%s", a.Symbol, strat_name)
   }
 }
 
-func (a *Asset) TrailingStop() {
+func (a *Asset) trailingStop() {
+  // TODO
   log.Println("[ INFO ]\tTrailingStop not implemented")
   return
 }

@@ -14,7 +14,7 @@ import (
   "github.com/valyala/fastjson"
   "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/request"
   "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
 
@@ -176,7 +176,7 @@ func (a *Account) Start(wg *sync.WaitGroup, ctx context.Context) {
           util.Error(err, "Retries", retries)
         } else {
           util.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
-          order.CloseAllPositions(2, 0)
+          request.CloseAllPositions(2, 0)
           log.Panic("SHUTTING DOWN")
         }
         util.Backoff(&backoff_sec)
@@ -207,7 +207,7 @@ func (p *ParsedMessage) getEvent() *string {
       errors.New("EVENT NOT IN TRADE UPDATE"), "Parsed message", p.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
-    order.CloseAllPositions(2, 0)
+    request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
   event_str := string(event)
@@ -242,7 +242,7 @@ func (p *ParsedMessage) getAssetClass() *string {
       errors.New("ASSET CLASS NOT IN TRADE UPDATE"), "Parsed message", p.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
-    order.CloseAllPositions(2, 0)
+    request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
   asset_class_str := string(asset_class)
@@ -260,7 +260,7 @@ func (p *ParsedMessage) getSymbol() *string {
       errors.New("SYMBOL NOT IN TRADE UPDATE"), "Parsed message", p.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
-    order.CloseAllPositions(2, 0)
+    request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
   symbol_str := string(symbol)
@@ -285,7 +285,7 @@ func (p *ParsedMessage) getAssetQty() *decimal.Decimal {
   asset_qty_dec, err := decimal.NewFromString(string(asset_qty))
   if err != nil {
     util.Error(err, "Asset qty", asset_qty, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
-    order.CloseAllPositions(2, 0)
+    request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
   return &asset_qty_dec
@@ -349,13 +349,13 @@ func updateAssetQty(p *Position, a *Asset, u *OrderUpdate) {
   var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
   p.Qty = p.Qty.Add(position_change)
   a.AssetQty = *u.AssetQty
-  if !a.SumPosQtyEqAssetQty() {
+  if !a.sumPosQtyEqAssetQty() {
     util.Error(
       errors.New("Sum of position qty not equal to asset qty"),
       "Asset", a.AssetQty, "Position", p.Qty, "OrderUpdate", u,
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
-    order.CloseAllPositions(2, 0)
+    request.CloseAllPositions(2, 0)
     log.Fatal("SHUTTING DOWN")
   }
 }
@@ -370,10 +370,10 @@ func (a *Account) closeLogic(asset *Asset, pos *Position, u *OrderUpdate) {
   if *u.Event == "fill" || *u.Event == "canceled" {
     a.db_chan <-pos.LogClose(*u.StratName)
     if pos.Qty.IsZero() {
-      asset.RemovePosition(*u.StratName)
+      asset.removePosition(*u.StratName)
     } else {
       pos.CloseOrderPending = false
-      asset.Close("IOC", *u.StratName)
+      asset.close("IOC", *u.StratName)
     }
   }
 }
@@ -387,7 +387,7 @@ func (a *Account) openLogic(asset *Asset, pos *Position, u *OrderUpdate) {
   }
   if *u.Event == "fill" || *u.Event == "canceled" {
     if pos.Qty.IsZero() {
-      asset.RemovePosition(*u.StratName)
+      asset.removePosition(*u.StratName)
     } else {
       a.db_chan <-pos.LogOpen(*u.StratName)
       pos.OpenOrderPending = false

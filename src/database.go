@@ -11,7 +11,7 @@ import (
   "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/util"
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/request"
 )
 
 type Query struct {
@@ -146,13 +146,13 @@ func (db *Database) errorHandler(
       db.errorHandler(err, func_name, response, query, retries + 1, backoff_sec)
     } else {
       util.Error(err, "MAX RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
-      order.CloseAllPositions(2, 0)
+      request.CloseAllPositions(2, 0)
       log.Panicln("SHUTTING DOWN")
     }
   }
   if retries > 3 {
     util.Warning(nil, "MAX RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
-    order.CloseAllPositions(2, 0)
+    request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
   db.queryHandler(query, *backoff_sec, retries + 1)

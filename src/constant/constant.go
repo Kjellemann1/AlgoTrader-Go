@@ -34,7 +34,6 @@ var (
 )
 
 var STOCK_LIST = []string{
-  // DID YOU FIX FILL MISSING MINUTES YET?
   // "AAPL",
   // "MSFT",
   // "NVDA",

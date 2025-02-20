@@ -8,7 +8,7 @@ import (
   "os/signal"
   "syscall"
   "context"
-  "github.com/Kjellemann1/AlgoTrader-Go/order"
+  "github.com/Kjellemann1/AlgoTrader-Go/request"
 )
 
 func ordersPending(assets map[string]map[string]*Asset) bool {
@@ -69,8 +69,7 @@ func shutdownHandler(marketCancel context.CancelFunc, accountCancel context.Canc
       switch input {
       case "Y", "y":
         log.Println("Closing all positions and shutting down...")
-        // TODO: Check if remove open orders is necessary
-        order.CloseAllPositions(2, 0)
+        request.CloseAllPositions(2, 0)
         marketCancel()
         accountCancel()
         fmt.Println("Do you want to clear the positions table? (y/n)")

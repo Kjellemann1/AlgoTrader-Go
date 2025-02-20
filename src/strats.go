@@ -12,11 +12,11 @@ func (a *Asset) rand() {
   num := rand.Intn(100)
 
   if num < 5 {
-    a.Open("long", "IOC", strat_name)
+    a.open("long", "IOC", strat_name)
   }
 
   if num >= 95 {
-    a.Close("IOC", strat_name)
+    a.close("IOC", strat_name)
   }
 
   a.Mutex.Unlock()

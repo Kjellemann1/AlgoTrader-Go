@@ -27,14 +27,14 @@ func TestIndexingMethods(t *testing.T) {
   }
 
   t.Run("I", func(t *testing.T) {
-    arr := a.C[a.I(pos)]
+    arr := a.C[a.i(pos)]
     assert.Equal(t, a.C[len(a.C) - 1 - pos], arr)
   })
 
   t.Run("S", func(t *testing.T) {
     from := 2
     to := 11
-    arr := a.S(&a.C, from, to)
+    arr := a.s(&a.C, from, to)
     assert.Equal(t, 10, len(arr))
     for i := 0; i < len(arr); i++ {
       assert.Equal(t, a.C[len(a.C) - 1 - i - from], arr[len(arr) - 1 - i])
