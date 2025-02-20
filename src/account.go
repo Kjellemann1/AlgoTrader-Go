@@ -167,6 +167,8 @@ func (a *Account) PingPong(ctx context.Context) {
 
   ticker := time.NewTicker(30 * time.Second)
   defer ticker.Stop()
+  log.Println("[ OK ]\tPingPong initiated for account")
+
   for {
     select {
     case <-ctx.Done():
@@ -279,7 +281,7 @@ func (p *ParsedMessage) getAssetClass() *string {
 }
 
 func (p *ParsedMessage) getSymbol() *string {
-  // Return if nil
+  // Return if nil, shutdown if fails
   symbol := p.Get("data").Get("order").GetStringBytes("symbol")
   if symbol == nil {
     util.Error(
@@ -369,7 +371,7 @@ func (a *Account) updateParser(p *ParsedMessage) *OrderUpdate {
   }
 }
 
-func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
+func updateAssetQty(p *Position, a *Asset, u *OrderUpdate) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
   var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
@@ -386,6 +388,41 @@ func calculatePositionQty(p *Position, a *Asset, u *OrderUpdate) {
   }
 }
 
+func (a *Account) closeLogic(asset *Asset, pos *Position, u *OrderUpdate) {
+  if u.FilledAvgPrice != nil {
+    pos.CloseFilledAvgPrice = *u.FilledAvgPrice
+  }
+  if u.FillTime != nil {
+    pos.CloseFillTime = *u.FillTime
+  }
+  if *u.Event == "fill" || *u.Event == "canceled" {
+    a.db_chan <-pos.LogClose(*u.StratName)
+    if pos.Qty.IsZero() {
+      asset.RemovePosition(*u.StratName)
+    } else {
+      pos.CloseOrderPending = false
+      asset.Close("IOC", *u.StratName)
+    }
+  }
+}
+
+func (a *Account) openLogic(asset *Asset, pos *Position, u *OrderUpdate) {
+  if u.FilledAvgPrice != nil {
+    pos.OpenFilledAvgPrice = *u.FilledAvgPrice
+  }
+  if u.FillTime != nil {
+    pos.OpenFillTime = *u.FillTime
+  }
+  if *u.Event == "fill" || *u.Event == "canceled" {
+    if pos.Qty.IsZero() {
+      asset.RemovePosition(*u.StratName)
+    } else {
+      a.db_chan <-pos.LogOpen(*u.StratName)
+      pos.OpenOrderPending = false
+    }
+  }
+}
+
 func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   var asset = a.assets[*u.AssetClass][*u.Symbol]
   var pos *Position = asset.Positions[*u.StratName]
@@ -394,42 +431,12 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   }
   pos.Rwm.Lock()
   defer pos.Rwm.Unlock()
-  // Update AssetQty
   if u.AssetQty != nil {
-    calculatePositionQty(pos, asset, u)
+    updateAssetQty(pos, asset, u)
   }
-  // Open order logic
   if pos.OpenOrderPending {
-    if u.FilledAvgPrice != nil {
-      pos.OpenFilledAvgPrice = *u.FilledAvgPrice
-    }
-    if u.FillTime != nil {
-      pos.OpenFillTime = *u.FillTime
-    }
-    if *u.Event == "fill" || *u.Event == "canceled" {
-      if pos.Qty.IsZero() {
-        asset.RemovePosition(*u.StratName)
-      } else {
-        a.db_chan <-pos.LogOpen(*u.StratName)
-        pos.OpenOrderPending = false
-      }
-    }
-  // Close order logic
+    a.openLogic(asset, pos, u)
   } else if pos.CloseOrderPending {
-    if u.FilledAvgPrice != nil {
-      pos.CloseFilledAvgPrice = *u.FilledAvgPrice
-    }
-    if u.FillTime != nil {
-      pos.CloseFillTime = *u.FillTime
-    }
-    if *u.Event == "fill" || *u.Event == "canceled" {
-      a.db_chan <-pos.LogClose(*u.StratName)
-      if pos.Qty.IsZero() {
-        asset.RemovePosition(*u.StratName)
-      } else {
-        pos.CloseOrderPending = false
-        asset.Close("IOC", *u.StratName)
-      }
-    }
+    a.closeLogic(asset, pos, u)
   }
 }

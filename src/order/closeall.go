@@ -2,13 +2,11 @@
 package order
 
 import (
-  "net/http"
   "log"
-
+  "net/http"
   "github.com/Kjellemann1/AlgoTrader-Go/util"
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
-
 
 // TODO: Also need to send a request to cancel all open orders?
 // TDOD: Also implement a function like this for clearing positions table in database

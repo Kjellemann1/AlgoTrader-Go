@@ -204,6 +204,7 @@ func (m *Market) PingPong(ctx context.Context) {
   })
   ticker := time.NewTicker(30 * time.Second)
   defer ticker.Stop()
+  log.Println("[ OK ]\tPingPong initiated for market websocket: ", m.asset_class)
   for {
     select {
     case <-ctx.Done():

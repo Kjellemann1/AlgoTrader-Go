@@ -17,10 +17,10 @@ type Position struct {
   StratName              string
   Qty                    decimal.Decimal
   BadForAnalysis         bool
-  PositionID             string  // The position id is primarily used to tie order updates to the correct
+  PositionID             string  // PositionID is primarily used to tie order updates to the correct
                                  // position object. It contains the strategy name which is grepped from 
-                                 // "client_order_id" in order updates, which together with the symbol is
-                                 // unique to the position.
+                                 // "client_order_id" in order updates. The strategy name in combination
+                                 // with the symbol is unique to the position.
   OpenOrderPending       bool
   OpenTriggerTime        time.Time 
   OpenSide               string
