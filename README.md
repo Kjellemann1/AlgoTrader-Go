@@ -1,4 +1,3 @@
-
 # AlgoTrader-Go
 
-A re-write of AlgoTrader in Go
+Rewriting my trading system in go
