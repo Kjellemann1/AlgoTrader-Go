@@ -211,7 +211,7 @@ func (m *Market) PingPong(ctx context.Context) {
 
   ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
-  log.Println("[ OK ]\tPingPong initiated for market websocket: ", m.asset_class)
+  log.Printf("[ OK ]\tPingPong initiated for %s market websocket\n", m.asset_class)
 
   for {
     select {

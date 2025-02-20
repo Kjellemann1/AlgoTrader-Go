@@ -4,6 +4,7 @@ import (
   "io"
   "strings"
   "time"
+  "errors"
   "net/http"
   "github.com/valyala/fastjson"
   "github.com/shopspring/decimal"
@@ -52,63 +53,47 @@ func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
   return qty
 }
 
-// TODO: Make sure this doesn't run for an infinite loop by implementing a max number of retries
-func CheckIfPositionExists(symbol string) (bool, decimal.Decimal) {
-  // TODO: Specific error handling
-  var backoff_sec int = 4
-  var backoff_max_sec int = 60
-  stripped_symbol := strings.Replace(symbol, "/", "", 1)
+
+func sendPosRequest() (*http.Response, error) {
   url := constant.ENDPOINT + "/positions"
-  qty, _ := decimal.NewFromString("0")
+  req, err := http.NewRequest("GET", url, nil)
+  if err != nil {
+    return nil, err
+  }
+  req.Header = constant.AUTH_HEADERS
+  resp, err := httpClient.Do(req)
+  if err != nil {
+    return nil, err
+  }
+  return resp, nil
+}
+
+func parsePosResponse(resp *http.Response) ([]*fastjson.Value, error) {
   var p = fastjson.Parser{}
-  for {
-    // Create request
-    req, err := http.NewRequest("GET", url, nil)
-    if err != nil {
-      util.Error(err, "Request", req)
-      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
-      continue
-    }
-    // Set headers
-    req.Header = constant.AUTH_HEADERS
-    // Send request
-    resp, err := httpClient.Do(req)
-    if err != nil {
-      util.Warning(err, "Response", resp, "Trying again in (seconds)", &backoff_sec)
-      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
-      continue
-    }
-    defer resp.Body.Close()
-    // Read response body
-    body, err := io.ReadAll(resp.Body)
-    if err != nil {
-      util.Warning(err, "Response", resp, "Trying again in (seconds)", &backoff_sec)
-      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
-      continue
-    }
-    // Parse response body
-    parsed, err := p.ParseBytes(body)
-    if err != nil {
-      util.Warning(err, "Parsed", parsed, "Trying again in (seconds)", &backoff_sec)
-      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
-      continue
-    }
-    // Get array returns nil if the array is empty, so need to check that before trying to get the array
-    if string(body) == "[]" {
-      return false, qty
-    } else if string(body) == `{"message":"forbidden."}` {
-      util.Warning(err, "message", string(body), "Trying again in (seconds)", &backoff_sec)
-      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
-      continue
-    }
-    // Get array from response
-    arr := parsed.GetArray()
-    if arr == nil {
-      util.Warning(err, "Response", string(body), "Trying again in (seconds)", &backoff_sec)
-      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
-      continue
-    }
-    // Check if position exists
+  body, err := io.ReadAll(resp.Body)
+  if err != nil {
+    return nil, err
+  }
+  if string(body) == "[]" {
+    return nil, nil
+  }
+  if string(body) == `{"message":"forbidden."}` {
+    return nil, errors.New(string(body))
+  }
+  parsed, err := p.ParseBytes(body)
+  if err != nil {
+    return nil, err
+  }
+  arr := parsed.GetArray()
+  if arr == nil {
+    return nil, errors.New("Parsed response is not an array")
+  }
+  return arr, nil
+}
+
+func checkIfPosExists(arr []*fastjson.Value, symbol string) (bool, decimal.Decimal) {
+  stripped_symbol := strings.Replace(symbol, "/", "", 1)
+  qty, _ := decimal.NewFromString("0")
     for _, v := range arr {
       if string(v.GetStringBytes("symbol")) == stripped_symbol {
         qty, err := decimal.NewFromString(string(v.GetStringBytes("qty")))
@@ -119,6 +104,37 @@ func CheckIfPositionExists(symbol string) (bool, decimal.Decimal) {
       }
     }
     return false, qty
+}
+
+func CheckIfPositionExists(symbol string) (bool, decimal.Decimal) {
+  backoff_sec := 4
+  backoff_max_sec := 60
+  retries := 0
+  for {
+    if retries >= 3 {
+      util.Error(errors.New("Max retries reached for CheckIfPositionExists"), 
+        "Symbol", symbol, "Setting No_new_positions = true", "...",
+      )
+      return false, decimal.NewFromInt(0)
+    }
+    resp, err := sendPosRequest()
+    if err != nil {
+      util.Error(err, "Trying again in (seconds)", &backoff_sec)
+      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
+      retries++
+      continue
+    }
+    defer resp.Body.Close()
+    arr, err := parsePosResponse(resp)
+    if err != nil {
+      util.Error(err, "Trying again in (seconds)", &backoff_sec)
+      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
+      retries++
+      continue
+    } else if arr == nil {
+      return false, decimal.NewFromInt(0)
+    }
+    return checkIfPosExists(arr, symbol)
   }
 }
 

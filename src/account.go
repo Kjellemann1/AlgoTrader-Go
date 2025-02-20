@@ -140,7 +140,7 @@ func (a *Account) PingPong(ctx context.Context) {
 
   ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
-  log.Println("[ OK ]\tPingPong initiated for account")
+  log.Println("[ OK ]\tPingPong initiated for account websocket")
 
   for {
     select {

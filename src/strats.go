@@ -11,11 +11,11 @@ func (a *Asset) rand() {
   strat_name := "rand"
   num := rand.Intn(100)
 
-  if num < 10 {
+  if num < 5 {
     a.Open("long", "IOC", strat_name)
   }
 
-  if num >= 90 {
+  if num >= 95 {
     a.Close("IOC", strat_name)
   }
 
