@@ -200,7 +200,7 @@ func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string,
     case "IOC":
       err = order.OpenLongIOC(symbol, asset_class, order_id, last_close)
       if err != nil {
-        return err
+        return
       }
   }
   return
@@ -239,11 +239,11 @@ func (a *Asset) Open(side string, order_type string, strat_name string) {
     return
   }
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
-    log.Println("[ INFO ]\tOpen cancelled due received time diff too large", a.Symbol)
+    log.Println("[ INFO ]\tOpen cancelled due to received time diff too large", a.Symbol)
     return
   } 
   if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF_MS {
-    log.Println("[ INFO ]\tOpen cancelled due trigger time diff too large", a.Symbol)
+    log.Println("[ INFO ]\tOpen cancelled due to trigger time diff too large", a.Symbol)
     return
   }
   if NNP.Flag == true {
@@ -271,6 +271,7 @@ func (a *Asset) Close(order_type string, strat_name string) {
   pos := a.Positions[strat_name]
   pos.Rwm.Lock()
   if pos.CloseOrderPending || pos.OpenOrderPending {
+    log.Println("[ INFO ]\tClose cancelled due to order pending", a.Symbol)
     pos.Rwm.Unlock()
     return
   }

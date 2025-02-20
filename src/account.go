@@ -10,11 +10,9 @@ import (
   "time"
   "context"
   "net/http"
-
   "github.com/gorilla/websocket"
   "github.com/valyala/fastjson"
   "github.com/shopspring/decimal"
-
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
   "github.com/Kjellemann1/AlgoTrader-Go/order"
   "github.com/Kjellemann1/AlgoTrader-Go/util/handlelog"
@@ -67,6 +65,7 @@ func (a *Account) messageHandler(message []byte) {
     handlelog.Error(err)
     return
   }
+
   message_type := string(parsed_msg.GetStringBytes("stream"))
   switch message_type {
     case "authorization":
