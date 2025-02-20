@@ -38,7 +38,6 @@ func rollFloat(arr *[]float64, v float64) {
 }
 
 func (a *Asset) fillMissingMinutes(t time.Time) {
-  // TODO: Write tests
   if a.Time.IsZero() {
     return
   }
@@ -126,7 +125,7 @@ func (a *Asset) CheckForSignal() {
   }
 }
 
-func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t time.Time, received_time time.Time) {
+func (a *Asset) updateWindowOnBar(o float64, h float64, l float64, c float64, t time.Time, received_time time.Time) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
   a.fillMissingMinutes(t)
@@ -144,7 +143,7 @@ func (a *Asset) UpdateWindowOnBar(o float64, h float64, l float64, c float64, t 
   a.lastCloseIsTrade = false
 }
 
-func (a *Asset) UpdateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
+func (a *Asset) updateWindowOnTrade(c float64, t time.Time, received_time time.Time) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
   if a.lastCloseIsTrade {
@@ -246,7 +245,7 @@ func (a *Asset) I(num int) (index int) {
 	return
 }
 
-func (a *Asset) IndexArray(arr *[]float64, from int, to int) (slice []float64) {
+func (a *Asset) S(arr *[]float64, from int, to int) (slice []float64) {
   slice = (*arr)[(constant.WINDOW_SIZE - 1 - to):(constant.WINDOW_SIZE - from)]
   return
 }

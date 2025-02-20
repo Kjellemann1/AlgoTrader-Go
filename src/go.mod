@@ -6,6 +6,7 @@ require (
 	github.com/go-sql-driver/mysql v1.9.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
+	github.com/qdm12/reprint v0.0.0-20200326205758-722754a53494
 	github.com/shopspring/decimal v1.4.0
 	github.com/stretchr/testify v1.10.0
 	github.com/valyala/fastjson v1.6.4

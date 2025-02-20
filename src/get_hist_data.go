@@ -90,7 +90,7 @@ func getHistBars(assets map[string]*Asset, asset_class string) {
       x := value.GetArray()
       for _, bar := range x {
         t, _ := time.Parse("2006-01-02T15:04:05Z", string(bar.GetStringBytes("t")))
-        assets[string(symbol)].UpdateWindowOnBar(
+        assets[string(symbol)].updateWindowOnBar(
           bar.GetFloat64("o"),
           bar.GetFloat64("h"),
           bar.GetFloat64("l"),

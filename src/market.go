@@ -97,7 +97,7 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.T
   asset := m.assets[symbol]
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   t = t.Add(1 * time.Minute)
-  asset.UpdateWindowOnBar(
+  asset.updateWindowOnBar(
     element.GetFloat64("o"),
     element.GetFloat64("h"),
     element.GetFloat64("l"),
@@ -114,7 +114,7 @@ func (m *Market) onMarketTradeUpdate(element *fastjson.Value, received_time time
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   price := element.GetFloat64("p")
   asset := m.assets[symbol]
-  asset.UpdateWindowOnTrade(price, t, received_time)
+  asset.updateWindowOnTrade(price, t, received_time)
   asset.CheckForSignal()
 }
 
