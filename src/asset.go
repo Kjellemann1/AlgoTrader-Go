@@ -10,6 +10,26 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/util/handlelog"
 )
 
+func prepAssetsMap() map[string]map[string]*Asset {
+  assets := make(map[string]map[string]*Asset)
+
+  if len(constant.STOCK_LIST) > 0 {
+    assets["stock"] = make(map[string]*Asset)
+    for _, symbol := range constant.STOCK_LIST {
+      assets["stock"][symbol] = NewAsset("stock", symbol)
+    }
+  }
+
+  if len(constant.CRYPTO_LIST) > 0 {
+    assets["crypto"] = make(map[string]*Asset)
+    for _, symbol := range constant.CRYPTO_LIST {
+      assets["crypto"][symbol] = NewAsset("crypto", symbol)
+    }
+  }
+
+  return assets
+}
+
 // Moves each element one step to the left, and inserts the new value at the tail.
 func rollFloat(arr *[]float64, v float64) {
   copy((*arr)[:constant.WINDOW_SIZE-1], (*arr)[1:])

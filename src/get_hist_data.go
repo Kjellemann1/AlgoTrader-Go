@@ -59,7 +59,13 @@ func makeRequest(asset_class string, page_token string) *fastjson.Value {
   return parsed
 }
 
-func GetHistBars(assets map[string]*Asset, asset_class string) {
+func fillHistBars (assets map[string]map[string]*Asset) {
+  for k, v := range assets {
+    getHistBars(v, k)
+  }
+}
+
+func getHistBars(assets map[string]*Asset, asset_class string) {
   var arr []*fastjson.Value
   page_token := "start"
   for page_token != "" {
@@ -70,7 +76,7 @@ func GetHistBars(assets map[string]*Asset, asset_class string) {
   temp_time := time.Now().UTC()
   for _, bars := range arr {
     if bars == nil {
-      fmt.Println("Bars is nil")
+      log.Println("[ WARNING ]\tBars is nil")
       continue
     }
     obj, err := bars.Object()
@@ -95,5 +101,17 @@ func GetHistBars(assets map[string]*Asset, asset_class string) {
       }
     })
   }
+
+  checkForZeroVals(assets)
 }
-// TODO: Add check that none of the prices are zero since the API returnes zero in place of missing data
+
+func checkForZeroVals(assets map[string]*Asset) {
+  // API returns zero in place of missing data
+  for _, asset := range assets {
+    for i := 0; i < constant.WINDOW_SIZE; i++ {
+      if asset.O[i] == 0 || asset.H[i] == 0 || asset.L[i] == 0 || asset.C[i] == 0 {
+        log.Println("[ WARNING ]\tZero value in window")
+      }
+    }
+  }
+}

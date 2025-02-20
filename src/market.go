@@ -31,22 +31,7 @@ type Market struct {
   worker_pool_chan  chan MarketMessage
 }
 
-func checkAllSymbolsInAssetsMap(asset_class string, assets map[string]*Asset) {
-  var symbol_list_ptr *[]string
-  if asset_class == "stock" {
-    symbol_list_ptr = &constant.STOCK_LIST
-  } else if asset_class == "crypto" {
-    symbol_list_ptr = &constant.CRYPTO_LIST
-  }
-  for _, symbol := range *symbol_list_ptr {
-    if _, ok := assets[symbol]; !ok {
-      handlelog.ErrorPanic(errors.New("Symbol not found in assets map"), "Symbol", symbol)
-    }
-  }
-}
-
 func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Market) {
-  checkAllSymbolsInAssetsMap(asset_class, assets)
   n_workers := len(assets)
   m = &Market{
     asset_class: asset_class,

@@ -26,3 +26,10 @@ func TestUpdateWindowOnBar(t *testing.T) {
   assert.Equal(t, base_array, a.L)
   assert.Equal(t, base_array, a.C)
 }
+
+func TestPrepAssetsMap(t *testing.T) {
+  assets := prepAssetsMap()
+  assert.NotEmpty(t, assets)
+  assert.Equal(t, len(constant.STOCK_LIST), len(assets["stock"]))
+  assert.Equal(t, len(constant.CRYPTO_LIST), len(assets["crypto"]))
+}
