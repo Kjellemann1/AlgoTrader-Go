@@ -9,8 +9,7 @@ import (
   "github.com/shopspring/decimal"
 
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/util/backoff"
-  "github.com/Kjellemann1/AlgoTrader-Go/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
 
 var httpClient = &http.Client{
@@ -27,13 +26,13 @@ func SendOrder(payload string) error {
   url := constant.ENDPOINT + "/orders"
   request, err := http.NewRequest("POST", url, strings.NewReader(payload))
   if err != nil {
-    handlelog.Error(err, "Request", request)
+    util.Error(err, "Request", request)
     return err
   }
   request.Header = constant.AUTH_HEADERS
   response, err := httpClient.Do(request)
   if err != nil {
-    handlelog.Error(err, response)
+    util.Error(err, response)
     return err
   }
   defer response.Body.Close()
@@ -66,8 +65,8 @@ func CheckIfPositionExists(symbol string) (bool, decimal.Decimal) {
     // Create request
     req, err := http.NewRequest("GET", url, nil)
     if err != nil {
-      handlelog.Error(err, "Request", req)
-      backoff.BackoffWithMax(&backoff_sec, backoff_max_sec)
+      util.Error(err, "Request", req)
+      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
       continue
     }
     // Set headers
@@ -75,38 +74,38 @@ func CheckIfPositionExists(symbol string) (bool, decimal.Decimal) {
     // Send request
     resp, err := httpClient.Do(req)
     if err != nil {
-      handlelog.Warning(err, "Response", resp, "Trying again in (seconds)", &backoff_sec)
-      backoff.BackoffWithMax(&backoff_sec, backoff_max_sec)
+      util.Warning(err, "Response", resp, "Trying again in (seconds)", &backoff_sec)
+      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
       continue
     }
     defer resp.Body.Close()
     // Read response body
     body, err := io.ReadAll(resp.Body)
     if err != nil {
-      handlelog.Warning(err, "Response", resp, "Trying again in (seconds)", &backoff_sec)
-      backoff.BackoffWithMax(&backoff_sec, backoff_max_sec)
+      util.Warning(err, "Response", resp, "Trying again in (seconds)", &backoff_sec)
+      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
       continue
     }
     // Parse response body
     parsed, err := p.ParseBytes(body)
     if err != nil {
-      handlelog.Warning(err, "Parsed", parsed, "Trying again in (seconds)", &backoff_sec)
-      backoff.BackoffWithMax(&backoff_sec, backoff_max_sec)
+      util.Warning(err, "Parsed", parsed, "Trying again in (seconds)", &backoff_sec)
+      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
       continue
     }
     // Get array returns nil if the array is empty, so need to check that before trying to get the array
     if string(body) == "[]" {
       return false, qty
     } else if string(body) == `{"message":"forbidden."}` {
-      handlelog.Warning(err, "message", string(body), "Trying again in (seconds)", &backoff_sec)
-      backoff.BackoffWithMax(&backoff_sec, backoff_max_sec)
+      util.Warning(err, "message", string(body), "Trying again in (seconds)", &backoff_sec)
+      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
       continue
     }
     // Get array from response
     arr := parsed.GetArray()
     if arr == nil {
-      handlelog.Warning(err, "Response", string(body), "Trying again in (seconds)", &backoff_sec)
-      backoff.BackoffWithMax(&backoff_sec, backoff_max_sec)
+      util.Warning(err, "Response", string(body), "Trying again in (seconds)", &backoff_sec)
+      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
       continue
     }
     // Check if position exists
@@ -126,19 +125,19 @@ func CheckIfPositionExists(symbol string) (bool, decimal.Decimal) {
 func CheckIfOrderExists(symbol string) (bool, string, error) {
   url := constant.ENDPOINT + "/orders?status=open&symbols=" + symbol
   request, err := http.NewRequest("GET", url, nil)
-  if err != nil {handlelog.Error(err, "Request", request, "URL", url); return false, "", err}
+  if err != nil {util.Error(err, "Request", request, "URL", url); return false, "", err}
 
   request.Header = constant.AUTH_HEADERS
   response, err := httpClient.Do(request)
-  if err != nil {handlelog.Error(err, "Request", request, "Response", response); return false, "", err}
+  if err != nil {util.Error(err, "Request", request, "Response", response); return false, "", err}
   defer response.Body.Close()
 
   body, err := io.ReadAll(response.Body)
-  if err != nil {handlelog.Error(err, "Response", response); return false, "", err}
+  if err != nil {util.Error(err, "Response", response); return false, "", err}
 
   var p = fastjson.Parser{}
   parsed, err := p.ParseBytes(body)
-  if err != nil {handlelog.Error(err, "Body", string(body)); return false, "", err}
+  if err != nil {util.Error(err, "Body", string(body)); return false, "", err}
 
   arr := parsed.GetArray()
   if len(arr) == 0 {
@@ -157,13 +156,13 @@ func CancelOrder(order_id string) error {
   url := constant.ENDPOINT + "/orders/" + order_id
   req, err := http.NewRequest("DELETE", url, nil)
   if err != nil {
-    handlelog.Error(err, "Request", req)
+    util.Error(err, "Request", req)
     return err
   }
   req.Header = constant.AUTH_HEADERS
   resp, err := httpClient.Do(req)
   if err != nil {
-    handlelog.Error(err, "Request", req, "Response", resp)
+    util.Error(err, "Request", req, "Response", resp)
     return err
   }
   defer resp.Body.Close()

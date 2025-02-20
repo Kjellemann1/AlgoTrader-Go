@@ -59,7 +59,7 @@ func makeRequest(asset_class string, page_token string) *fastjson.Value {
   return parsed
 }
 
-func fillHistBars (assets map[string]map[string]*Asset) {
+func fillRollingWindows (assets map[string]map[string]*Asset) {
   for k, v := range assets {
     getHistBars(v, k)
   }

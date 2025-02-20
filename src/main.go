@@ -26,7 +26,7 @@ func main() {
   defer wg.Wait()
 
   assets := prepAssetsMap()
-  fillHistBars(assets)
+  fillRollingWindows(assets)
 
   wg.Add(1)
   db := NewDatabase(db_chan)

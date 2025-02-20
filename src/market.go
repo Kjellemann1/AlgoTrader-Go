@@ -13,8 +13,7 @@ import (
   "github.com/gorilla/websocket"
 
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/util/backoff"
-  "github.com/Kjellemann1/AlgoTrader-Go/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/util"
   "github.com/Kjellemann1/AlgoTrader-Go/order"
 )
 
@@ -49,7 +48,7 @@ func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
       defer wg.Done()
       for mm := range m.worker_pool_chan {
         if err :=m.messageHandler(mm); err != nil {
-          handlelog.Warning(err, "Message", mm.message)
+          util.Warning(err, "Message", mm.message)
           continue
         }
       }
@@ -123,12 +122,12 @@ func (m *Market) parseMessage(mm MarketMessage) (*fastjson.Value, error) {
   parser := fastjson.Parser{}
   arr, err := parser.ParseBytes(mm.message)
   if err != nil {
-    handlelog.Warning(err, "Message", string(mm.message))
+    util.Warning(err, "Message", string(mm.message))
     return nil, err
   }
   if arr.Type() != fastjson.TypeArray {
     err := errors.New("Message is not an array")
-    handlelog.Warning(err, "Message", string(mm.message))
+    util.Warning(err, "Message", string(mm.message))
     return nil, err
   }
   return arr, err
@@ -150,9 +149,9 @@ func (m *Market) messageHandler(mm MarketMessage) error {
         m.onInitialMessages(element)
       case "error":
         err := errors.New(string(mm.message))
-        handlelog.ErrorPanic(err, "Message", string(mm.message))
+        util.ErrorPanic(err, "Message", string(mm.message))
       default:
-        handlelog.Warning(errors.New("Unknown message type"), "Message type", message_type, "Message", string(mm.message))
+        util.Warning(errors.New("Unknown message type"), "Message type", message_type, "Message", string(mm.message))
     }
   }
   return nil
@@ -197,7 +196,7 @@ func (m *Market) subscribe() (err error) {
 
 func (m *Market) PingPong(ctx context.Context) {
   if err := m.conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
-    handlelog.Warning(err)
+    util.Warning(err)
   }
   m.conn.SetPongHandler(func(string) error {
     m.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -213,7 +212,7 @@ func (m *Market) PingPong(ctx context.Context) {
       if err := m.conn.WriteControl(
         websocket.PingMessage, []byte("ping"),
         time.Now().Add(5 * time.Second)); err != nil {
-        handlelog.Warning(err)
+        util.Warning(err)
         m.conn.Close()
         return
       }
@@ -235,7 +234,7 @@ func (m *Market) listen(ctx context.Context) error {
       case <-ctx.Done():
         return ctx.Err()
       default:
-        handlelog.Error(err)
+        util.Error(err)
         continue
       }
     }
@@ -259,16 +258,16 @@ func (m *Market) Start(wg *sync.WaitGroup, ctx context.Context) {
           panic(err.Error())
         }
         if retries < 5 {
-          handlelog.Error(err, "Retries", retries)
+          util.Error(err, "Retries", retries)
         } else {
-          handlelog.Error(err,
+          util.Error(err,
             "MAXIMUM NUMBER OF RETRIES REACHED", retries, 
             "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
           )
           order.CloseAllPositions(2, 0)
           log.Panic("SHUTTING DOWN")
         }
-        backoff.Backoff(&backoff_sec)
+        util.Backoff(&backoff_sec)
         retries++
         continue
       }
@@ -277,8 +276,8 @@ func (m *Market) Start(wg *sync.WaitGroup, ctx context.Context) {
         if initial {
           panic(err.Error())
         }
-        handlelog.Error(err)
-        backoff.Backoff(&backoff_sec)
+        util.Error(err)
+        util.Backoff(&backoff_sec)
         retries++
         continue
       }

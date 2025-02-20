@@ -7,7 +7,7 @@ import (
   "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/order"
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/util/handlelog"
+  "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
 
 func prepAssetsMap() map[string]map[string]*Asset {
@@ -37,9 +37,11 @@ func rollFloat(arr *[]float64, v float64) {
 }
 
 func (a *Asset) fillMissingMinutes(t time.Time) {
-  // TODO: Write test for this!!!
-  // TODO: THIS ONLY WORKS FOR CRYPTO. ASSUMES 24/7 MARKET
-  //  -> Maybe only add synthetic bar if the times are on the same day if stock
+  // TODO: 
+  //  -> THIS ONLY WORKS FOR CRYPTO. ASSUMES 24/7 MARKET
+  //    -> Maybe only add synthetic bar if the times are on the same day if stock
+  //  -> Write tests!
+  //  -> Make agnostic to time resolution
   if a.Time.IsZero() {
     return
   }
@@ -94,17 +96,7 @@ func NewAsset(asset_class string, symbol string) (a *Asset) {
     L: make([]float64, constant.WINDOW_SIZE),
     C: make([]float64, constant.WINDOW_SIZE),
     strategies: []strategyFunc{
-      // (*Asset).EMACrossRSI,
-      // (*Asset).RSIMiddle,
-      // (*Asset).testCool,
       (*Asset).testRand,
-      // (*Asset).testRSI,
-      // (*Asset).testSMA,
-      // (*Asset).testBBands,
-      // (*Asset).testMomentum,
-      // (*Asset).testRSI1,
-      // (*Asset).testRSI2,
-      // (*Asset).testRSI3,
     },
   }
   a.StartStrategies()
@@ -254,47 +246,58 @@ func (a *Asset) IndexArray(arr *[]float64, from int, to int) (slice []float64) {
 
 func (a *Asset) Open(side string, order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
+
   if _, ok := a.Positions[strat_name]; ok {
     log.Println("[ INFO ]\tOpen cancelled since trade already exists", a.Symbol)
     return
   }
+
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
     log.Println("[ INFO ]\tOpen cancelled due to received time diff too large", a.Symbol)
     return
   } 
+
   if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF_MS {
     log.Println("[ INFO ]\tOpen cancelled due to trigger time diff too large", a.Symbol)
     return
   }
+
   if NNP.Flag == true {
     return
   }
+
   last_close := a.C[constant.WINDOW_SIZE-1]
   symbol := a.Symbol
   order_id := a.createPositionID(strat_name)
   asset_class := a.AssetClass
   a.Mutex.Unlock()
+
   a.initiatePositionObject(strat_name, order_type, side, order_id, trigger_time)
   err := a.sendOpenOrder(order_type, order_id, symbol, asset_class, last_close)
   if err != nil {
-    handlelog.Warning(err, "Symbol", symbol, "Strat", strat_name, "OrderType", order_type, "Side", side)
+    util.Warning(err, "Symbol", symbol, "Strat", strat_name, "OrderType", order_type, "Side", side)
     a.RemovePosition(strat_name)
   }
+
   a.Mutex.Lock()
 }
 
 func (a *Asset) Close(order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
+
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
+
   pos := a.Positions[strat_name]
   pos.Rwm.Lock()
+
   if pos.CloseOrderPending || pos.OpenOrderPending {
     log.Println("[ INFO ]\tClose cancelled due to order pending", a.Symbol)
     pos.Rwm.Unlock()
     return
   }
+
   open_side := pos.OpenSide
   symbol := pos.Symbol
   qty := pos.Qty
@@ -306,9 +309,10 @@ func (a *Asset) Close(order_type string, strat_name string) {
   pos.ClosePriceTime = a.Time
   pos.ClosePriceReceivedTime = a.ReceivedTime
   pos.Rwm.Unlock()
+
   err := a.sendCloseOrder(open_side, order_type, order_id, symbol, qty)
   if err != nil {
-    handlelog.Error(err, symbol, order_id)
+    util.Error(err, symbol, order_id)
     return
   }
 }
@@ -320,10 +324,12 @@ func (a *Asset) StopLoss(percent float64, strat_name string) {
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
+
   fill_price := a.Positions[strat_name].OpenFilledAvgPrice
   if fill_price == 0 {
     return
   }
+
   dev := (fill_price / a.C[a.I(0)] - 1) * 100
   if dev < (percent * -1) {
     a.Close("IOC", strat_name)
@@ -338,10 +344,12 @@ func (a *Asset) TakeProfit(percent float64, strat_name string) {
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
+
   fill_price := a.Positions[strat_name].OpenFilledAvgPrice
   if fill_price == 0 {
     return
   }
+
   dev := (fill_price / a.C[a.I(0)] - 1) * 100
   if dev > percent {
     a.Close("IOC", strat_name)
@@ -350,5 +358,6 @@ func (a *Asset) TakeProfit(percent float64, strat_name string) {
 }
 
 func (a *Asset) TrailingStop() {
-  panic("TrailingStop not implemented")
+  log.Println("[ INFO ]\tTrailingStop not implemented")
+  return
 }

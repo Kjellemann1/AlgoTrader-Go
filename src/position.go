@@ -8,9 +8,8 @@ import (
   "log"
   "sync"
   "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/util/pretty"
+  "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
-
 
 type Position struct {
   Symbol                 string
@@ -19,8 +18,9 @@ type Position struct {
   Qty                    decimal.Decimal
   BadForAnalysis         bool
   PositionID             string  // The position id is primarily used to tie order updates to the correct
-                                 // position object. It contains the strategy name which is grepped for on order
-                                 // updates, which together with the symbol is unique to the position.
+                                 // position object. It contains the strategy name which is grepped from 
+                                 // "client_order_id" in order updates, which together with the symbol is
+                                 // unique to the position.
   OpenOrderPending       bool
   OpenTriggerTime        time.Time 
   OpenSide               string
@@ -45,7 +45,6 @@ type Position struct {
   Rwm                    sync.RWMutex
 }
 
-
 func NewPosition(symbol string) *Position {
   zero, _ := decimal.NewFromString("0")
   p := &Position{
@@ -57,10 +56,9 @@ func NewPosition(symbol string) *Position {
   return p
 }
 
-
 func (p *Position) LogOpen(strat_name string) *Query {
   symbol := p.Symbol
-  pretty.AddWhitespace(&symbol, 10)
+  util.AddWhitespace(&symbol, 10)
   log.Println("OPEN >>\t" + symbol + "\t" + strat_name)
   query := &Query{
     Action: "open",
@@ -78,15 +76,13 @@ func (p *Position) LogOpen(strat_name string) *Query {
     FillTime: p.OpenFillTime,
     FilledAvgPrice: p.OpenFilledAvgPrice,
     BadForAnalysis: p.BadForAnalysis,
-    TrailingStopPrice: 0.0, // TODO: Change this when trailing stop is implemented
   }
   return query
 }
 
-
 func (p *Position) LogClose(strat_name string) *Query {
   symbol := p.Symbol
-  pretty.AddWhitespace(&symbol, 10)
+  util.AddWhitespace(&symbol, 10)
   log.Println("<< CLOSE\t" + symbol + "\t" + strat_name)
   var side string
   if p.OpenSide == "long" {
