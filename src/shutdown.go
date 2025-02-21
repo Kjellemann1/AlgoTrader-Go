@@ -11,27 +11,20 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/request"
 )
 
-func ordersPending(assets map[string]map[string]*Asset) bool {
-  for _, class := range assets {
-    for _, asset := range class {
-      for _, position := range (*asset).Positions {
-        if position.OpenOrderPending || position.CloseOrderPending {
-          return true
-        }
-      }
-    }
-  }
-  return false
-}
-
 func stallIfOrdersPending(assets map[string]map[string]*Asset) {
   ticker := time.NewTicker(3 * time.Second)
   defer ticker.Stop()
   for range ticker.C {
-    if !ordersPending(assets) {
+    pending := pendingOrders(assets)
+    if len(pending) == 0 {
       return
     } else {
-      log.Println("Orders pending ...")
+      log.Println("Waiting for pending orders:")
+      for _, v := range pending {
+        for symbol := range v {
+          log.Println("  ->", symbol)
+        }
+      }
     }
   }
 }

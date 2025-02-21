@@ -31,6 +31,38 @@ func prepAssetsMap() map[string]map[string]*Asset {
   return assets
 }
 
+func pendingOrders(assets map[string]map[string]*Asset) map[string][]*Position {
+  pending := make(map[string][]*Position, 0)
+
+  for _, asset_class := range assets {
+    for _, asset := range asset_class {
+      for _, pos := range asset.Positions {
+        if pos.OpenOrderPending || pos.CloseOrderPending {
+          pending[pos.Symbol] = append(pending[pos.Symbol], pos)
+        }
+      }
+    }
+  }
+
+  return pending
+}
+
+func positionsSymbols(positions map[string][]*Position) map[string]map[string]int {
+  symbols := make(map[string]map[string]int)
+
+  for s, l := range positions {
+    for _, p := range l {
+      if p.AssetClass == "stock" {
+        symbols["stock"][s] = 1
+      } else {
+        symbols["crypto"][s] = 1
+      }
+    }
+  }
+
+  return symbols
+}
+
 // Moves each element one step to the left, and inserts the new value at the tail.
 func rollFloat(arr *[]float64, v float64) {
   copy((*arr)[:constant.WINDOW_SIZE-1], (*arr)[1:])

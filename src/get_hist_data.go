@@ -4,11 +4,10 @@ import (
   "time"
   "fmt"
   "strings"
-  "net/http"
   "log"
-  "io"
   "github.com/valyala/fastjson"
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
+  "github.com/Kjellemann1/AlgoTrader-Go/request"
 )
 
 func urlHistBars(asset_class string, page_token string) string {
@@ -38,24 +37,15 @@ func urlHistBars(asset_class string, page_token string) string {
 
 func makeRequest(asset_class string, page_token string) *fastjson.Value {
   url := urlHistBars(asset_class, page_token)
-  req, err := http.NewRequest("GET", url, nil)
+  body, err := request.GetReq(url)
   if err != nil {
-    log.Fatalf(
-      "[ ERROR ]\tFailed to create request in GetHistBars()\n" +
-      "  -> Error: %s\n",
-    err)
+    log.Fatalf(err.Error())
   }
-  req.Header = constant.AUTH_HEADERS
-  response, err := http.DefaultClient.Do(req)
-  if err != nil {
-    log.Fatalf(
-      "[ ERROR ]\tFailed to send request in GetHistBars()\n" +
-      "  -> Error: %s\n",
-    err)
-  }
-  body, _ := io.ReadAll(response.Body)
   p := fastjson.Parser{}
-  parsed, _ := p.ParseBytes(body)
+  parsed, err := p.ParseBytes(body)
+  if err != nil {
+    log.Fatalf(err.Error())
+  }
   return parsed
 }
 

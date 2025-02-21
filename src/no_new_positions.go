@@ -36,9 +36,5 @@ func NewNoNewPositions() (n *NoNewPositions) {
     Flag: false,
     m: make(map[string]bool),
   }
-  n.m["Run"] = false
-  n.m["Account.listen"] = false
-  n.m["Market.listen"] = false
-  n.m["Database"] = false
   return
 }

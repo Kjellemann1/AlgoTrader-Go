@@ -24,7 +24,7 @@ var httpClient = &http.Client{
   },
 }
 
-func GetReq(url string) ([]byte, error) {
+func getReq(url string) ([]byte, error) {
   req, err := http.NewRequest("GET", url, nil)
   if err != nil {
     return nil, err
@@ -97,22 +97,105 @@ func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
   return qty
 }
 
-func GetPositions(backoff_sec int, retries int) ([]*fastjson.Value, error) {
-  if retries >= 4 {
-    return nil, errors.New("Max retries reached. Failed to get positions.")
+func checkIfPosExists(arr []*fastjson.Value, symbol string) (bool, decimal.Decimal) {
+  stripped_symbol := strings.Replace(symbol, "/", "", 1)
+  qty, _ := decimal.NewFromString("0")
+    for _, v := range arr {
+      if string(v.GetStringBytes("symbol")) == stripped_symbol {
+        qty, err := decimal.NewFromString(string(v.GetStringBytes("qty")))
+        if err != nil {
+          qty, _ = decimal.NewFromString("0")
+        }
+        return true, qty
+      }
+    }
+    return false, qty
+}
+
+func CheckIfPositionExists(symbol string) (bool, decimal.Decimal) {
+  backoff_sec := 4
+  backoff_max_sec := 60
+  retries := 0
+  for {
+    if retries >= 3 {
+      util.Error(errors.New("Max retries reached for CheckIfPositionExists"), 
+        "Symbol", symbol, "Setting No_new_positions = true", "...",
+      )
+      return false, decimal.NewFromInt(0)
+    }
+    url := constant.ENDPOINT + "/positions"
+    body, err := getReq(url)
+    if err != nil {
+      util.Error(err, "Trying again in (seconds)", &backoff_sec)
+      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
+      retries++
+      continue
+    }
+    if body == nil {
+      return false, decimal.NewFromInt(0)
+    }
+    arr, err := parseBody(body)
+    if err != nil {
+      util.Error(err, "Trying again in (seconds)", &backoff_sec)
+      util.BackoffWithMax(&backoff_sec, backoff_max_sec)
+      retries++
+      continue
+    } else if arr == nil {
+      return false, decimal.NewFromInt(0)
+    }
+    return checkIfPosExists(arr, symbol)
   }
-  body, err := GetReq(constant.ENDPOINT + "/positions")
+}
+
+func CheckIfOrderExists(symbol string) (bool, string, error) {
+  url := constant.ENDPOINT + "/orders?status=open&symbols=" + symbol
+  request, err := http.NewRequest("GET", url, nil)
+  if err != nil {util.Error(err, "Request", request, "URL", url); return false, "", err}
+
+  request.Header = constant.AUTH_HEADERS
+  response, err := httpClient.Do(request)
+  if err != nil {util.Error(err, "Request", request, "Response", response); return false, "", err}
+  defer response.Body.Close()
+
+  body, err := io.ReadAll(response.Body)
+  if err != nil {util.Error(err, "Response", response); return false, "", err}
+
+  var p = fastjson.Parser{}
+  parsed, err := p.ParseBytes(body)
+  if err != nil {util.Error(err, "Body", string(body)); return false, "", err}
+
+  arr := parsed.GetArray()
+  if len(arr) == 0 {
+    return false, "", nil
+  }
+  var order_id string
+  for _, v := range arr {
+    if string(v.GetStringBytes("symbol")) == symbol {
+      order_id = string(v.GetStringBytes("id"))
+    }
+  }
+  return true, order_id, nil
+}
+
+func CancelOrder(order_id string) error {
+  url := constant.ENDPOINT + "/orders/" + order_id
+  req, err := http.NewRequest("DELETE", url, nil)
   if err != nil {
-    util.Error(err, "Trying again in (seconds)", &backoff_sec)
-    util.Backoff(&backoff_sec)
-    retries++
-    GetPositions(backoff_sec, retries)
+    util.Error(err, "Request", req)
+    return err
   }
-  arr, err := parseBody(body)
+  req.Header = constant.AUTH_HEADERS
+  resp, err := httpClient.Do(req)
   if err != nil {
-    return nil, err
+    util.Error(err, "Request", req, "Response", resp)
+    return err
   }
-  return arr, nil
+  defer resp.Body.Close()
+  return nil
+}
+
+func CheckIfQtyMatches(symbol string, qty decimal.Decimal) {
+  // TODO
 }
 
 func OpenLongIOC(symbol string, asset_class string, order_id string, last_price float64) error {
@@ -174,23 +257,15 @@ func CloseAllPositions(backoff_sec int, retries int) {
   log.Printf("[ OK ]\tSent order to close all positions\n")
 }
 
-func urlGetClosedOrders(symbols map[string]map[string]int) (url string) {
+func urlGetClosedOrders(symbols map[string][]string) (url string) {
   var symbols_str string
-  ls := make([]string, 0)
   if len(symbols["stock"]) > 0 {
-    for k := range symbols["stock"] {
-      ls = append(ls, k)
-    }
-    symbols_str += strings.Replace(strings.Join(ls, "%2C"), "/", "%2F", len(symbols["crypto"]))
+    symbols_str += strings.Replace(strings.Join(symbols["crypto"], "%2C"), "/", "%2F", len(symbols["crypto"]))
   }
-  ls = make([]string, 0)
   if len(symbols_str) > 0 {
-    for k := range symbols["crypto"] {
-      ls = append(ls, k)
-    }
     symbols_str += "%2C"
   }
-  symbols_str += strings.Join(ls, "%2C")
+  symbols_str += strings.Join(symbols["stock"], "%2C")
   // A better solution than just taking the last 500 orders could be to only take the
   // ones since the time of the last executed trade from the database.
   url = fmt.Sprintf(
@@ -200,14 +275,12 @@ func urlGetClosedOrders(symbols map[string]map[string]int) (url string) {
   return
 }
 
-func GetClosedOrders(symbols map[string]map[string]int, backoff_sec int, retries int) ([]*fastjson.Value, error) {
+func GetClosedOrders(symbols map[string][]string, backoff_sec int, retries int) ([]*fastjson.Value, error) {
   if retries >= 4 {
     return nil, errors.New("Max retries reached. Failed to get closed orders.")
   }
-
   url := urlGetClosedOrders(symbols)
-
-  body, err := GetReq(url)
+  body, err := getReq(url)
   if err != nil || body == nil {
     util.Error(err,
       "body", string(body),
@@ -217,7 +290,6 @@ func GetClosedOrders(symbols map[string]map[string]int, backoff_sec int, retries
     retries++
     GetClosedOrders(symbols, backoff_sec, retries)
   }
-
   parsed, err := parseBody(body)
   if err != nil {
     util.Error(err, "Trying again in (seconds)", &backoff_sec)
@@ -225,28 +297,8 @@ func GetClosedOrders(symbols map[string]map[string]int, backoff_sec int, retries
     retries++
     GetClosedOrders(symbols, backoff_sec, retries)
   }
-
   if retries > 0 {
     log.Printf("[ OK ]\tRetrieved closed orders after (%d) retries\n", retries)
   }
-
   return parsed, nil
-}
-
-func GetAssetQtys() (qtys map[string]decimal.Decimal, err error) {
-  apos, err := GetPositions(5, 0)
-  if err != nil {
-    return
-  }
-
-  qtys = make(map[string]decimal.Decimal)
-  for _, v  := range apos {
-    qty, err := decimal.NewFromString(v.Get("qty").String())
-    if err != nil {
-      return nil, err
-    }
-    qtys[v.Get("symbol").String()] = qty
-  }
-
-  return
 }

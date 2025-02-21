@@ -344,12 +344,15 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
   }
   defer response.Close()
   for response.Next() {
-    var positionID, symbol, assetClass, side, stratName, orderType string
-    var qty decimal.Decimal
-    var triggerPrice, filledAvgPrice, trailingStop float64
-    var priceTime, receivedTime, triggerTime, fillTime time.Time
-    var badForAnalysis bool
-    var nCloseOrders int8
+    var (
+      positionID, symbol, assetClass, side, stratName, orderType string
+      qty decimal.Decimal
+      triggerPrice, filledAvgPrice, trailingStop float64
+      priceTime, receivedTime, triggerTime, fillTime time.Time
+      badForAnalysis bool
+      nCloseOrders int8
+    )
+    // TODO: Write test to assure the order of the columns in the query is correct
     err = response.Scan(
       &symbol,
       &stratName,

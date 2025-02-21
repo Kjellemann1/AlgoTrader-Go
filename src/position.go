@@ -77,6 +77,7 @@ func (p *Position) LogOpen(strat_name string) *Query {
     FilledAvgPrice: p.OpenFilledAvgPrice,
     BadForAnalysis: p.BadForAnalysis,
   }
+
   return query
 }
 
@@ -109,5 +110,6 @@ func (p *Position) LogClose(strat_name string) *Query {
     BadForAnalysis: p.BadForAnalysis,
     NCloseOrders: p.NCloseOrders,
   }
+
   return query
 }

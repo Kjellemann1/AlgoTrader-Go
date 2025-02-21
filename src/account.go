@@ -18,7 +18,7 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
 
-type ParsedMessage struct {
+type AccountMessage struct {
   *fastjson.Value
 }
 
@@ -70,7 +70,7 @@ func (a *Account) messageHandler(message []byte) {
     case "authorization":
       a.onAuth(parsed_msg)
     case "trade_updates":
-      update := a.updateParser(&ParsedMessage{parsed_msg})
+      update := a.updateParser(&AccountMessage{parsed_msg})
       if update == nil {
         return
       }
@@ -109,7 +109,6 @@ func (a *Account) connect() (err error) {
   }
   return nil
 }
-
 
 func (a *Account) listen(ctx context.Context) {
   for {
@@ -161,7 +160,6 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
   backoff_sec := 5
   retries := 0
-  initial := true
 
   for {
     select {
@@ -169,13 +167,14 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
       return
     default:
       if err := a.connect() ; err != nil {
-        if initial {
-          panic(err.Error())
-        }
         if retries < 5 {
           util.Error(err, "Retries", retries)
         } else {
-          util.Error(err, "MAXIMUM NUMBER OF RETRIES REACHED", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+          NNP.NoNewPositionsTrue("")
+          util.Error(err, 
+            "MAXIMUM NUMBER OF RETRIES REACHED", retries, 
+            "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+          )
           request.CloseAllPositions(2, 0)
           log.Panic("SHUTTING DOWN")
         }
@@ -184,25 +183,24 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
         continue
       }
 
-      initial = false
       backoff_sec = 5
       retries = 0
 
+      go a.checkPending()
       go a.listen(ctx)
       a.PingPong(ctx)
       a.conn.Close()
-      // TODO: On reconnect, check that positions on the server are the same as locally
-      //   -> Make sure we didn't miss any updates
     }
   }
 }
 
-func (p *ParsedMessage) getEvent() *string {
+func (p *AccountMessage) getEvent() *string {
   // Shutdown if nil
   // Only handle fill, partial_fill and canceled events.
   // Other events are likely not relevant. https://alpaca.markets/docs/api-documentation/api-v2/streaming/
   event := p.Get("data").GetStringBytes("event")
   if event == nil {
+    NNP.NoNewPositionsTrue("")
     util.Error(
       errors.New("EVENT NOT IN TRADE UPDATE"), "Parsed message", p.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
@@ -217,27 +215,40 @@ func (p *ParsedMessage) getEvent() *string {
   return &event_str
 }
 
-func (p *ParsedMessage) getStratName() *string {
-  // Return if nil 
+func (p *AccountMessage) getPositionID() *string {
   position_id := p.Get("data").Get("order").GetStringBytes("client_order_id")  // client_order_id == PositionID
   if position_id == nil {
     util.Warning(errors.New("PositionID not found in order update"), nil)
     return nil
   }
   position_id_str := string(position_id)
+  return &position_id_str
+}
+
+func grepStratName(position_id *string) *string {
   pattern := `strat\[(.*?)\]`
   re := regexp.MustCompile(pattern)
-  match := re.FindStringSubmatch(position_id_str)
+  match := re.FindStringSubmatch(*position_id)
   if match != nil && len(match) > 1 {
     return &match[1]
   }
   return nil
 }
 
-func (p *ParsedMessage) getAssetClass() *string {
+func (p *AccountMessage) getStratName() *string {
+  // Return if nil 
+  position_id := p.getPositionID()
+  if position_id == nil {
+    return nil
+  }
+  return grepStratName(position_id)
+}
+
+func (p *AccountMessage) getAssetClass() *string {
   // Shutdown if nil
   asset_class := p.Get("data").Get("order").GetStringBytes("asset_class")
   if asset_class == nil {
+    NNP.NoNewPositionsTrue("")
     util.Error(
       errors.New("ASSET CLASS NOT IN TRADE UPDATE"), "Parsed message", p.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
@@ -252,10 +263,11 @@ func (p *ParsedMessage) getAssetClass() *string {
   return &asset_class_str
 }
 
-func (p *ParsedMessage) getSymbol() *string {
+func (p *AccountMessage) getSymbol() *string {
   // Return if nil, shutdown if fails
   symbol := p.Get("data").Get("order").GetStringBytes("symbol")
   if symbol == nil {
+    NNP.NoNewPositionsTrue("")
     util.Error(
       errors.New("SYMBOL NOT IN TRADE UPDATE"), "Parsed message", p.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
@@ -267,63 +279,73 @@ func (p *ParsedMessage) getSymbol() *string {
   return &symbol_str
 }
 
-func (p *ParsedMessage) getSide() *string {
+func (p *AccountMessage) getSide() *string {
   side := p.Get("data").Get("order").GetStringBytes("side")
   if side == nil {
     return nil
   }
   side_str := string(side)
+
   return &side_str
 }
 
-func (p *ParsedMessage) getAssetQty() *decimal.Decimal {
+func (p *AccountMessage) getAssetQty() *decimal.Decimal {
   // Return if nil, shutdown if fails
   asset_qty := p.Get("data").GetStringBytes("position_qty")
   if asset_qty == nil {
     return nil
   }
+
   asset_qty_dec, err := decimal.NewFromString(string(asset_qty))
   if err != nil {
+    NNP.NoNewPositionsTrue("")
     util.Error(err, "Asset qty", asset_qty, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
     request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
+
   return &asset_qty_dec
 }
 
-func (p *ParsedMessage) getFillTime() *time.Time {
+func (p *AccountMessage) getFillTime() *time.Time {
   fill_time := p.Get("data").Get("order").GetStringBytes("filled_at")
   if fill_time == nil {
     return nil
   }
+
   fill_time_t, err := time.Parse(time.RFC3339, string(fill_time))
   if err != nil {
     util.Warning(errors.New("Failed to convert fill_time to time.Time in update"))
   }
+
   return &fill_time_t
 }
 
-func (p *ParsedMessage) getFilledAvgPrice() *float64 {
+func (p *AccountMessage) getFilledAvgPrice() *float64 {
   filled_avg_price := p.Get("data").Get("order").GetStringBytes("filled_avg_price")
   if filled_avg_price == nil {
     return nil
   }
+
   filled_avg_price_float, err := strconv.ParseFloat(string(filled_avg_price), 8)
   if err != nil {
     util.Warning(errors.New("Failed to convert filled_avg_price to float in order update"))
   }
+
   return &filled_avg_price_float
 }
 
-func (a *Account) updateParser(p *ParsedMessage) *OrderUpdate {
+func (a *Account) updateParser(p *AccountMessage) *OrderUpdate {
   event := p.getEvent()
   if event == nil {
     return nil
   }
+
   strat_name := p.getStratName()
   if strat_name == nil {
     return nil
   }
+
   asset_class := p.getAssetClass()
   symbol := p.getSymbol()
   side := p.getSide()
@@ -350,6 +372,7 @@ func updateAssetQty(p *Position, a *Asset, u *OrderUpdate) {
   p.Qty = p.Qty.Add(position_change)
   a.AssetQty = *u.AssetQty
   if !a.sumPosQtyEqAssetQty() {
+    NNP.NoNewPositionsTrue("")
     util.Error(
       errors.New("Sum of position qty not equal to asset qty"),
       "Asset", a.AssetQty, "Position", p.Qty, "OrderUpdate", u,
