@@ -250,7 +250,7 @@ func (m *Market) listen(ctx context.Context) error {
   }
 }
 
-func (m *Market) Start(wg *sync.WaitGroup, ctx context.Context) {
+func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
   backoff_sec := 5
   retries := 0

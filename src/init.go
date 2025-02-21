@@ -11,7 +11,14 @@ import (
 )
 
 func init() {
-  name := "/var/lib/mysql-files/algologs/" + time.Now().In(time.UTC).Format(time.DateTime) + ".log"
+  err := godotenv.Load()
+  if err != nil {
+    panic(err)
+  }
+}
+
+func init() {
+  name := os.Getenv("LogPath") + time.Now().In(time.UTC).Format(time.DateTime) + ".log"
   logfile, err := os.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
   if err != nil {
     panic(err)
@@ -21,11 +28,6 @@ func init() {
 }
 
 func init() {
-  err := godotenv.Load()
-  if err != nil {
-    panic(err)
-  }
-
   constant.PUSH_TOKEN = os.Getenv("PushoverToken")
   constant.PUSH_USER = os.Getenv("PushoverUser")
 

@@ -157,7 +157,7 @@ func (a *Account) PingPong(ctx context.Context) {
   }
 }
 
-func (a *Account) Start(wg *sync.WaitGroup, ctx context.Context) {
+func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
   backoff_sec := 5
   retries := 0

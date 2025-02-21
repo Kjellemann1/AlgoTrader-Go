@@ -34,17 +34,17 @@ func main() {
 
   wg.Add(1)
   a := NewAccount(assets, db_chan)
-  go a.Start(&wg, accountCtx)
+  go a.start(&wg, accountCtx)
 
   if _, ok := assets["stock"]; ok {
     sm := NewMarket("stock", constant.WSS_STOCK, assets["stock"])
     wg.Add(1)
-    go sm.Start(&wg, marketCtx)
+    go sm.start(&wg, marketCtx)
   }
 
   if _, ok := assets["crypto"]; ok {
     cm := NewMarket("crypto", constant.WSS_CRYPTO, assets["crypto"])
     wg.Add(1)
-    go cm.Start(&wg, marketCtx)
+    go cm.start(&wg, marketCtx)
   } 
 }

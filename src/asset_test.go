@@ -26,12 +26,12 @@ func TestIndexingMethods(t *testing.T) {
     a.C[i] = float64(i)
   }
 
-  t.Run("I", func(t *testing.T) {
+  t.Run("i", func(t *testing.T) {
     arr := a.C[a.i(pos)]
     assert.Equal(t, a.C[len(a.C) - 1 - pos], arr)
   })
 
-  t.Run("S", func(t *testing.T) {
+  t.Run("s", func(t *testing.T) {
     from := 2
     to := 11
     arr := a.s(&a.C, from, to)
