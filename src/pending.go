@@ -120,6 +120,18 @@ func (a *Account) closedOrderHandler(arr []*fastjson.Value) map[string][]*Parsed
   return parsed
 }
 
+func split(splits int64, num decimal.Decimal, places int32) []decimal.Decimal {
+  slice := make([]decimal.Decimal, splits)
+  temp := num.Div(decimal.NewFromInt(splits))
+  amount := temp.RoundDown(places)
+  for i := 0; i < int(splits); i++ {
+    slice[i] = amount
+  }
+  rest := num.Sub(amount.Mul(decimal.NewFromInt(splits)))
+  slice[0] = slice[0].Add(rest)
+  return slice
+}
+
 func (a *Account) diffZero(asset_class string, parsed []*ParsedClosedOrder) {
   for _, pco := range parsed {
     asset := a.assets[asset_class][*pco.Symbol]
@@ -129,19 +141,32 @@ func (a *Account) diffZero(asset_class string, parsed []*ParsedClosedOrder) {
   }
 }
 
-func bestRoundingFunctionEverMadeInTheHistoryOfTheUniverseNoKapp(num decimal.Decimal, desimals int64) decimal.Decimal {
-  ten, _ := decimal.NewFromString("10")
-  nine := decimal.NewFromInt(desimals)
-  big := num.Mul(ten.Pow(nine))
-  rounded := big.Floor().Div(ten.Pow(nine))
-  return rounded
-}
-
-func (a *Account) diffPositive(diff *decimal.Decimal, n_pending_open int, asset_class string, parsed []*ParsedClosedOrder) {
+func (a *Account) diffPositive(diff decimal.Decimal, n_pending_open int, asset_class string, parsed []*ParsedClosedOrder) {
+  splits := make([]decimal.Decimal, 0)
+  if asset_class == "stock" {
+    splits = split(int64(n_pending_open), diff, 0)
+  } else if asset_class == "crypto" {
+    splits = split(int64(n_pending_open), diff, 9)
+  }
+  iter := 0
+  asset := a.assets[asset_class][*parsed[0].Symbol]
   for _, pco := range parsed {
-    asset := a.assets[asset_class][*pco.Symbol]
+    pos := asset.Positions[*pco.StratName]
     switch *pco.Side {
     case "buy":
+      pos.Qty = splits[iter]
+      pos.OpenFilledAvgPrice = *pco.FilledAvgPrice
+      pos.OpenFillTime = *pco.FillTime
+      pos.BadForAnalysis = true
+      a.db_chan <- pos.LogOpen(*pco.StratName)
+      iter++
+    case "sell":
+      pos.Qty = decimal.Zero
+      pos.CloseFilledAvgPrice = *pco.FilledAvgPrice
+      pos.CloseFillTime = *pco.FillTime
+      pos.BadForAnalysis = true
+      a.db_chan <- pos.LogClose(*pco.StratName)
+      asset.removePosition(*pco.StratName)
     }
   }
 }
@@ -169,12 +194,13 @@ func (a *Account) updatePositions(parsed map[string][]*ParsedClosedOrder) {
 
       switch {
       case diff.IsPositive():
-        continue
+        a.diffPositive(diff, n_pending_open, asset_class, parsed[symbol])
       case diff.IsNegative():
         continue
       default:
         a.diffZero(asset_class, parsed[symbol])
       }
+      a.assets[asset_class][symbol].AssetQty = qtys[symbol]
     }
   }
 }
