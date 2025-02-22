@@ -56,10 +56,10 @@ func NewPosition(symbol string) *Position {
   return p
 }
 
-func (p *Position) LogOpen(strat_name string) *Query {
+func (p *Position) LogOpen() *Query {
   symbol := p.Symbol
   util.AddWhitespace(&symbol, 10)
-  log.Println("OPEN >>\t" + symbol + "\t" + strat_name)
+  log.Println("OPEN >>\t" + symbol + "\t" + p.StratName)
   query := &Query{
     Action: "open",
     PositionID: p.PositionID,
@@ -81,10 +81,10 @@ func (p *Position) LogOpen(strat_name string) *Query {
   return query
 }
 
-func (p *Position) LogClose(strat_name string) *Query {
+func (p *Position) LogClose() *Query {
   symbol := p.Symbol
   util.AddWhitespace(&symbol, 10)
-  log.Println("<< CLOSE\t" + symbol + "\t" + strat_name)
+  log.Println("<< CLOSE\t" + symbol + "\t" + p.StratName)
   var side string
   if p.OpenSide == "long" {
     side = "sell"

@@ -149,6 +149,21 @@ func CloseIOC(side string, symbol string, order_id string, qty decimal.Decimal) 
   return nil
 }
 
+func CloseGTC(side string, symbol string, order_id string, qty decimal.Decimal) error {
+  payload := `{` +
+    `"symbol": "` + symbol + `", ` +
+    `"client_order_id": "` + order_id + `_close", ` +
+    `"qty": "` + qty.String() + `", ` +
+    `"side": "` + side + `", ` +
+    `"type": "market", "time_in_force": "gtc", "order_class": "simple"` +
+  `}`
+  if err := SendOrder(payload); err != nil {
+    log.Println("Error sending order in order.CloseGTC():", err.Error())
+    return err
+  }
+  return nil
+}
+
 func CloseAllPositions(backoff_sec int, retries int) {
   if retries >= 3 {
     log.Printf("[FAIL]\tFailed to close all positions after %d retries\n", retries)

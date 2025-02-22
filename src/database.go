@@ -390,7 +390,7 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       CloseOrderPending: false,
       NCloseOrders: nCloseOrders,
     }
-    assets[assetClass][symbol].AssetQty = assets[assetClass][symbol].AssetQty.Add(qty)
+    assets[assetClass][symbol].Qty = assets[assetClass][symbol].Qty.Add(qty)
     log.Printf("[ INFO ]\t Retrieved position: %s %s %s", symbol, stratName, qty.String())
   }
   log.Println("[ OK ]\tState retrieved from database")

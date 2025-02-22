@@ -63,6 +63,41 @@ func positionsSymbols(positions map[string][]*Position) map[string]map[string]in
   return symbols
 }
 
+func (a *Asset) sumPosQtysEqAssetQty() bool {
+  count, _ := decimal.NewFromString("0")
+  for _, val := range a.Positions {
+    count = count.Add(val.Qty)
+  }
+  if a.Qty.Compare(count) != 0 {
+    return false
+  } else {
+    return true
+  }
+}
+
+func (a *Asset) sumNoPendingPosQtys() decimal.Decimal {
+  count, _ := decimal.NewFromString("0")
+  for _, val := range a.Positions {
+    if !val.OpenOrderPending && !val.CloseOrderPending {
+      count = count.Add(val.Qty)
+    }
+  }
+  return count
+}
+
+func (a *Asset) diffAssetQty() decimal.Decimal {
+  // Returns the difference between asset qty on the server and the local asset qty
+  // Diff is positive if server qty is higher than local qty
+  qtys, err := request.GetAssetQtys()
+  if err != nil {
+    NNP.NoNewPositionsTrue("")
+    util.Error(err, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+    request.CloseAllPositions(2, 0)
+    log.Panicln("SHUTTING DOWN")
+  }
+  return qtys[a.Symbol].Sub(a.Qty)
+}
+
 // Moves each element one step to the left, and inserts the new value at the tail.
 func rollFloat(arr *[]float64, v float64) {
   copy((*arr)[:constant.WINDOW_SIZE-1], (*arr)[1:])
@@ -73,7 +108,7 @@ func (a *Asset) fillMissingMinutes(t time.Time) {
   if a.Time.IsZero() {
     return
   }
-  if a.AssetClass == "stock" {
+  if a.Class == "stock" {
     if a.Time.Day() != t.Day() {
       return
     }
@@ -99,8 +134,8 @@ type strategyFunc func(*Asset)
 type Asset struct {
   Symbol            string
   Positions         map[string]*Position
-  AssetQty          decimal.Decimal
-  AssetClass        string
+  Qty               decimal.Decimal
+  Class             string
   Time              time.Time
   ReceivedTime      time.Time
   lastCloseIsTrade  bool
@@ -121,9 +156,9 @@ func newAsset(asset_class string, symbol string) (a *Asset) {
   a = &Asset{
     lastCloseIsTrade: false,
     Positions: make(map[string]*Position),
-    AssetClass: asset_class,
+    Class: asset_class,
     Symbol: symbol,
-    AssetQty: decimal.NewFromInt(0),
+    Qty: decimal.NewFromInt(0),
     O: make([]float64, constant.WINDOW_SIZE),
     H: make([]float64, constant.WINDOW_SIZE),
     L: make([]float64, constant.WINDOW_SIZE),
@@ -188,22 +223,6 @@ func (a *Asset) updateWindowOnTrade(c float64, t time.Time, received_time time.T
   a.lastCloseIsTrade = true
 }
 
-func (a *Asset) sumPosQtyEqAssetQty() bool {
-  count, _ := decimal.NewFromString("0")
-  for _, val := range a.Positions {
-    count = count.Add(val.Qty)
-  }
-  if a.AssetQty.Compare(count) != 0 {
-    log.Printf(
-      "[ INFO ]\tAssetQty does not equal sum of position quantities\n" +
-      "  ->AssetQty: %s\n\tSum of position quantities: %s\n\tSymbol: %s\n",
-    a.AssetQty.String(), count.String(), a.Symbol)
-    return false
-  } else {
-    return true
-  }
-}
-
 func (a *Asset) createPositionID(strat_name string) string {
   t := a.Time.Format(time.DateTime)
   position_id := "symbol[" + a.Symbol + "]_strat[" + strat_name + "]_time[" + t + "]"
@@ -228,7 +247,7 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
   pos.Rwm.Lock()
   defer pos.Rwm.Unlock()
   pos.Symbol = a.Symbol
-  pos.AssetClass = a.AssetClass
+  pos.AssetClass = a.Class
   pos.StratName = strat_name
   pos.PositionID = order_id
   pos.OpenSide = side
@@ -307,7 +326,7 @@ func (a *Asset) open(side string, order_type string, strat_name string) {
   last_close := a.C[constant.WINDOW_SIZE-1]
   symbol := a.Symbol
   order_id := a.createPositionID(strat_name)
-  asset_class := a.AssetClass
+  asset_class := a.Class
   a.Mutex.Unlock()
 
   a.initiatePositionObject(strat_name, order_type, side, order_id, trigger_time)

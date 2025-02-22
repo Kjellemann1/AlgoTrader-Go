@@ -368,30 +368,41 @@ func (a *Account) updateParser(p *AccountMessage) *OrderUpdate {
 func updateAssetQty(p *Position, a *Asset, u *OrderUpdate) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
-  var position_change decimal.Decimal = (*u.AssetQty).Sub(a.AssetQty)
+  var position_change decimal.Decimal = (*u.AssetQty).Sub(a.Qty)
   p.Qty = p.Qty.Add(position_change)
-  a.AssetQty = *u.AssetQty
-  if !a.sumPosQtyEqAssetQty() {
-    NNP.NoNewPositionsTrue("")
-    util.Error(
-      errors.New("Sum of position qty not equal to asset qty"),
-      "Asset", a.AssetQty, "Position", p.Qty, "OrderUpdate", u,
-      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
-    )
-    request.CloseAllPositions(2, 0)
-    log.Fatal("SHUTTING DOWN")
+  a.Qty = *u.AssetQty
+
+  if !a.sumPosQtysEqAssetQty() {
+    util.Warning(errors.New("Position quantities do not sum to asset quantity"))
+    diff := a.diffAssetQty()
+
+    if diff.IsPositive() {
+      request.CloseGTC("sell", *u.Symbol, "reconnect_diff", diff)
+    } else {
+      NNP.NoNewPositionsTrue("")
+      util.Error(errors.New("Position quantities exceed asset quantity"),
+        "Diff", diff,
+        "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+      )
+      request.CloseAllPositions(2, 0)
+      log.Panicln("SHUTTING DOWN")
+    }
   }
+
+  log.Println("[ OK ]\tReconnect diff reconciled for", *u.Symbol)
 }
 
 func (a *Account) closeLogic(asset *Asset, pos *Position, u *OrderUpdate) {
   if u.FilledAvgPrice != nil {
     pos.CloseFilledAvgPrice = *u.FilledAvgPrice
   }
+
   if u.FillTime != nil {
     pos.CloseFillTime = *u.FillTime
   }
+
   if *u.Event == "fill" || *u.Event == "canceled" {
-    a.db_chan <-pos.LogClose(*u.StratName)
+    a.db_chan <-pos.LogClose()
     if pos.Qty.IsZero() {
       asset.removePosition(*u.StratName)
     } else {
@@ -405,30 +416,58 @@ func (a *Account) openLogic(asset *Asset, pos *Position, u *OrderUpdate) {
   if u.FilledAvgPrice != nil {
     pos.OpenFilledAvgPrice = *u.FilledAvgPrice
   }
+
   if u.FillTime != nil {
     pos.OpenFillTime = *u.FillTime
   }
+
   if *u.Event == "fill" || *u.Event == "canceled" {
     if pos.Qty.IsZero() {
       asset.removePosition(*u.StratName)
     } else {
-      a.db_chan <-pos.LogOpen(*u.StratName)
+      a.db_chan <-pos.LogOpen()
       pos.OpenOrderPending = false
     }
   }
 }
 
+func (a *Account) reconnectDiff(u *OrderUpdate) {
+  asset := a.assets[*u.AssetClass][*u.Symbol]
+  asset.Rwm.Lock()
+  defer asset.Rwm.Unlock()
+
+  if !asset.sumPosQtysEqAssetQty() {
+    NNP.NoNewPositionsTrue("")
+    util.Error(errors.New("Position quantities do not sum to asset qty"),
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
+    request.CloseAllPositions(2, 0)
+    log.Panicln("SHUTTING DOWN")
+  }
+}
+
 func (a *Account) orderUpdateHandler(u *OrderUpdate) {
+  if *u.StratName == "reconnect_multiple_diff" {
+    a.reconnectDiff(u)
+    return
+  }
+
   var asset = a.assets[*u.AssetClass][*u.Symbol]
   var pos *Position = asset.Positions[*u.StratName]
+
   if pos == nil {
-    log.Panicf("Position nil: %s", *u.Symbol)
+    util.Error(errors.New("Position nil: %s"),
+      "Symbol", *u.Symbol,
+    )
   }
+
   pos.Rwm.Lock()
   defer pos.Rwm.Unlock()
+
   if u.AssetQty != nil {
     updateAssetQty(pos, asset, u)
   }
+
   if pos.OpenOrderPending {
     a.openLogic(asset, pos, u)
   } else if pos.CloseOrderPending {

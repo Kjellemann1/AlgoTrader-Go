@@ -1,13 +1,6 @@
 // When a reconnect is triggered in account, there could be missed order updates.
 // Therefore we need to check for any orders that where executed while the connection
 // was down, and update the positions accordingly.
-//
-// A simple approach is used where the difference between the asset qty on the server,
-// and the asset qty in the asset struct, is equaly distributed between the positions
-// with pending orders.
-//
-// Due to this approach, these trader will be marked as "bad for analysis" in the
-// database, as the qty likely differs from the actual.
 
 package main
 
@@ -110,65 +103,96 @@ func (co *ClosedOrder) parse() *ParsedClosedOrder {
   }
 }
 
+func (a *Account) parseClosedOrders(relevant map[string][]*fastjson.Value) map[string][]*ParsedClosedOrder {
+  parsed := make(map[string][]*ParsedClosedOrder)
+
+  for symbol, arr := range relevant {
+    for _, fjv := range arr {
+      co := &ClosedOrder{fjv}
+      parsed[symbol] = append(parsed[symbol], co.parse())
+    }
+  }
+
+  return parsed
+}
+
 func (a *Account) closedOrderHandler(arr []*fastjson.Value) map[string][]*ParsedClosedOrder {
   parsed := make(map[string][]*ParsedClosedOrder)
+
   for _, m := range arr {
     co := &ClosedOrder{m}
     pco := co.parse()
     parsed[*pco.Symbol] = append(parsed[*pco.Symbol], pco)
   }
+
   return parsed
 }
 
-func split(splits int64, num decimal.Decimal, places int32) []decimal.Decimal {
-  slice := make([]decimal.Decimal, splits)
-  temp := num.Div(decimal.NewFromInt(splits))
-  amount := temp.RoundDown(places)
-  for i := 0; i < int(splits); i++ {
-    slice[i] = amount
+func (a *Account) diffMultiple(parsed []*ParsedClosedOrder, asset_class string) {
+  asset := a.assets[asset_class][*parsed[0].Symbol]
+
+  for _, pco := range parsed {
+    pos := asset.Positions[*pco.StratName]
+    pos.BadForAnalysis = true
+    pos.Qty = decimal.Zero
+    a.db_chan <-pos.LogClose()
+    asset.removePosition(*pco.StratName)
   }
-  rest := num.Sub(amount.Mul(decimal.NewFromInt(splits)))
-  slice[0] = slice[0].Add(rest)
-  return slice
+
+  diff := asset.Qty.Sub(asset.sumNoPendingPosQtys())
+  if !diff.IsZero() {
+    request.CloseGTC("sell", *parsed[0].Symbol, "strat[reconnect_mutliple_diff]", diff)
+  }
+}
+
+func (a *Account) diffPositive(diff decimal.Decimal, asset_class string, parsed []*ParsedClosedOrder) {
+  pco := parsed[0]
+  asset := a.assets[asset_class][*pco.Symbol]
+  pos := asset.Positions[*pco.StratName]
+
+  pos.BadForAnalysis = true
+  pos.Qty = diff
+  pos.OpenFilledAvgPrice = *pco.FilledAvgPrice
+  pos.OpenFillTime = *pco.FillTime
+  pos.OpenOrderPending = false
+}
+
+func (a *Account) diffNegative(diff decimal.Decimal, asset_class string, parsed []*ParsedClosedOrder) {
+  pco := parsed[0]
+  asset := a.assets[asset_class][*pco.Symbol]
+  pos := asset.Positions[*pco.StratName]
+
+  pos.BadForAnalysis = true
+
+  if diff.LessThan(pos.Qty) {
+    pos.Qty = diff
+    pos.NCloseOrders++
+    pos.CloseOrderPending = false
+    asset.close("IOC", pos.StratName)
+    return
+  }
+
+  pos.Qty = decimal.Zero
+  pos.CloseFilledAvgPrice = *pco.FilledAvgPrice
+  pos.CloseFillTime = *pco.FillTime
+  a.db_chan <-pos.LogClose()
+  asset.removePosition(*pco.StratName)
 }
 
 func (a *Account) diffZero(asset_class string, parsed []*ParsedClosedOrder) {
-  for _, pco := range parsed {
-    asset := a.assets[asset_class][*pco.Symbol]
-    asset.Positions[*pco.StratName].BadForAnalysis = true
-    asset.Positions[*pco.StratName].Qty = decimal.Zero
-    asset.removePosition(*pco.StratName)
-  }
-}
+  pco := parsed[0]
+  asset := a.assets[asset_class][*pco.Symbol]
+  pos := asset.Positions[*pco.StratName]
 
-func (a *Account) diffPositive(diff decimal.Decimal, n_pending_open int, asset_class string, parsed []*ParsedClosedOrder) {
-  splits := make([]decimal.Decimal, 0)
-  if asset_class == "stock" {
-    splits = split(int64(n_pending_open), diff, 0)
-  } else if asset_class == "crypto" {
-    splits = split(int64(n_pending_open), diff, 9)
+  if *pco.Side == "buy" {
+    asset.removePosition(*pco.StratName)
+    return
   }
-  iter := 0
-  asset := a.assets[asset_class][*parsed[0].Symbol]
-  for _, pco := range parsed {
-    pos := asset.Positions[*pco.StratName]
-    switch *pco.Side {
-    case "buy":
-      pos.Qty = splits[iter]
-      pos.OpenFilledAvgPrice = *pco.FilledAvgPrice
-      pos.OpenFillTime = *pco.FillTime
-      pos.BadForAnalysis = true
-      a.db_chan <- pos.LogOpen(*pco.StratName)
-      iter++
-    case "sell":
-      pos.Qty = decimal.Zero
-      pos.CloseFilledAvgPrice = *pco.FilledAvgPrice
-      pos.CloseFillTime = *pco.FillTime
-      pos.BadForAnalysis = true
-      a.db_chan <- pos.LogClose(*pco.StratName)
-      asset.removePosition(*pco.StratName)
-    }
-  }
+
+  pos.BadForAnalysis = true
+  pos.NCloseOrders++
+  pos.CloseOrderPending = false
+  asset.close("IOC", pos.StratName)
 }
 
 func (a *Account) updatePositions(parsed map[string][]*ParsedClosedOrder) {
@@ -182,29 +206,25 @@ func (a *Account) updatePositions(parsed map[string][]*ParsedClosedOrder) {
 
   for asset_class := range a.assets {
     for symbol := range parsed {
-      n_pending_open := 0
-
-      for _, co := range parsed[symbol] {
-        if *co.Side == "buy" {
-          n_pending_open++
-        }
+      if len(parsed[symbol]) > 1 {
+        a.diffMultiple(parsed[symbol], asset_class)
+        continue
       }
 
-      diff := qtys[symbol].Sub((*a.assets[asset_class][symbol]).AssetQty)
+      diff := qtys[symbol].Sub((*a.assets[asset_class][symbol]).Qty)
+      a.assets[asset_class][symbol].Qty = qtys[symbol]
 
       switch {
       case diff.IsPositive():
-        a.diffPositive(diff, n_pending_open, asset_class, parsed[symbol])
+        a.diffPositive(diff, asset_class, parsed[symbol])
       case diff.IsNegative():
-        continue
+        a.diffPositive(diff, asset_class, parsed[symbol])
       default:
         a.diffZero(asset_class, parsed[symbol])
       }
-      a.assets[asset_class][symbol].AssetQty = qtys[symbol]
     }
   }
 }
-
 
 func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string][]*Position) map[string][]*fastjson.Value {
   relevant := make(map[string][]*fastjson.Value)
@@ -214,6 +234,7 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
       for _, pos := range v {
         position_id := m.GetStringBytes("client_order_id")  // client_order_id == PositionID
         symbol := m.GetStringBytes("symbol")
+
         if position_id == nil {
           util.Warning(errors.New("PositionID not found"), nil)
           continue
@@ -221,6 +242,7 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
           util.Warning(errors.New("Symbol not found"), nil)
           continue
         }
+
         if string(position_id) == pos.PositionID {
           relevant[string(symbol)] = append(relevant[string(symbol)], m)
           break
@@ -230,14 +252,6 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
   }
 
   return relevant
-}
-
-func (a *Account) parseOrder(order *ClosedOrder) {
-
-}
-
-func (a *Account) parseOrders() {
-
 }
 
 func (a *Account) checkPending() {
@@ -264,7 +278,8 @@ func (a *Account) checkPending() {
     return
   }
 
-  // a.checkAssetQty()
+  parsed := a.parseClosedOrders(relevant)
+  a.updatePositions(parsed)
 
   log.Println("[ OK ]\tPending orders updated")
 }

@@ -88,7 +88,7 @@ func TestFillMissingMinutes(t *testing.T) {
     b := make([]float64, constant.WINDOW_SIZE)
     copy(b, baseArray)
     a, _ := reprint.This(asset).(*Asset)
-		a.AssetClass = "stock"
+		a.Class = "stock"
 		a.Time = time.Date(2001, 1, 1, 0, 1, 0, 0, time.UTC)
 		newTime := time.Date(2001, 1, 2, 1, 4, 0, 0, time.UTC)
 		a.fillMissingMinutes(newTime)
@@ -107,7 +107,7 @@ func TestFillMissingMinutes(t *testing.T) {
     copy(b, baseArray)
     a, _ := reprint.This(asset).(*Asset)
 		a.Time = time.Date(2001, 1, 1, 23, 59, 0, 0, time.UTC)
-		a.AssetClass = "crypto"
+		a.Class = "crypto"
 		newTime := time.Date(2001, 1, 2, 0, 3, 0, 0, time.UTC)
 		a.fillMissingMinutes(newTime)
 		assert.Equal(t, b, a.C)
