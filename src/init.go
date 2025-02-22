@@ -13,7 +13,7 @@ import (
 func init() {
   err := godotenv.Load()
   if err != nil {
-    panic(err)
+    log.Panicln(err)
   }
 }
 
@@ -21,7 +21,7 @@ func init() {
   name := os.Getenv("LogPath") + time.Now().In(time.UTC).Format(time.DateTime) + ".log"
   logfile, err := os.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
   if err != nil {
-    panic(err)
+    log.Panicln(err)
   }
   multiWriter := io.MultiWriter(os.Stdout, logfile)
   log.SetOutput(multiWriter)
@@ -41,7 +41,7 @@ func init() {
   constant.DB_PORT = os.Getenv("DBPort")
 
   if constant.KEY == "" || constant.SECRET == "" {
-    panic("Missing PaperKey or PaperSecret")
+    log.Panicln("Missing PaperKey or PaperSecret")
   }
 
   constant.AUTH_HEADERS = http.Header{

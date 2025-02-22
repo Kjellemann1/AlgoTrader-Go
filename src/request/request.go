@@ -77,7 +77,6 @@ func SendOrder(payload string) (int, error) {
   request.Header = constant.AUTH_HEADERS
   response, err := httpClient.Do(request)
   if err != nil {
-    util.Error(err, response)
     return response.StatusCode, err
   }
   defer response.Body.Close()

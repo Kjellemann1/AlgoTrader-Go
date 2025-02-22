@@ -263,7 +263,7 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
     default:
       if err := m.connect(); err != nil {
         if initial {
-          panic(err.Error())
+          log.Panicln(err.Error())
         }
         if retries < 5 {
           util.Error(err, "Retries", retries)
@@ -282,7 +282,7 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
 
       if err := m.subscribe(); err != nil {
         if initial {
-          panic(err.Error())
+          log.Panicln(err.Error())
         }
         util.Error(err)
         util.Backoff(&backoff_sec)

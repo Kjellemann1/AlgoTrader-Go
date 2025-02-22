@@ -241,7 +241,7 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
     request.CloseAllPositions(2, 0)
-    panic("SHUTTING DOWN")
+    log.Panicln("SHUTTING DOWN")
   }
   pos := a.Positions[strat_name]
   pos.Rwm.Lock()
@@ -333,26 +333,34 @@ func (a *Asset) open(side string, order_type string, strat_name string) {
   backoff_sec := 1
   retries := 0
 
+  Loop:
   for {
     status, err := a.sendOpenOrder(order_type, position_id, symbol, asset_class, last_close)
     if err != nil {
       util.Error(err, "Symbol", symbol)
       a.removePosition(strat_name)
-      break
-    }
-
-    if status == 403 {
-      util.Info("[ INFO ]\tWash trade block on Open", 
-        "Retrying in (seconds)", backoff_sec, "PositionID", position_id,
-      )
-      util.Backoff(&backoff_sec)
-      retries++
+      break Loop
     }
 
     if retries > 1 {
       log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tOpen failed on retry")
       a.removePosition(strat_name)
       break
+    }
+
+    switch status {
+    case 200:
+      if retries > 0 {
+        log.Printf("[ INFO ]\tOpen successful on retry\n  -> Symbol: %s\n  -> Strat: %s\n", a.Symbol, strat_name)
+      }
+      break Loop
+    case 403:
+      util.Info("Wash trade block on Open", 
+        "Retrying in (seconds)", backoff_sec, "Symbol", symbol, "Strat", strat_name,
+      )
+      util.Backoff(&backoff_sec)
+      retries++
+      continue Loop
     }
   }
 
@@ -393,7 +401,7 @@ func (a *Asset) close(order_type string, strat_name string) {
   for {
     status, err := a.sendCloseOrder(open_side, order_type, position_id, symbol, qty)
     if err != nil {
-      util.Error(err, "PositionID", position_id)
+      util.Error(err, "Symbol", symbol, "Strat", strat_name)
     }
 
     switch status {
@@ -403,12 +411,12 @@ func (a *Asset) close(order_type string, strat_name string) {
     case 403:
       // TODO: Make sure this is actually a wash trade by checking response, and not
       // insufficient funds, qty etc.
-      util.Info("[ INFO ]\tWash trade block on Close", "Retrying in (seconds)", backoff_sec)
+      util.Info("Wash trade block on Close", "Retrying in (seconds)", backoff_sec)
       util.BackoffWithMax(&backoff_sec, 20)
       retries++
     case 200:
-      if retries > 0 && err == nil {
-        util.Info("Close successful after retries", "PositionID", position_id, "Retries", retries + 1)
+      if retries > 0 {
+        util.Info("Close successful after retries", "Symbol", symbol, "Strat", strat_name, "Retries", retries)
         NNP.NoNewPositionsFalse("Close")
       }
       return
@@ -423,7 +431,7 @@ func (a *Asset) close(order_type string, strat_name string) {
 
     if retries > 1 {
       NNP.NoNewPositionsTrue("Close")
-      util.Error(errors.New("Close failed on retry"), "PositionID", position_id, "Retries", retries)
+      util.Error(errors.New("Close failed on retry"), "Symbol", symbol, "Strat", strat_name, "Retries", retries)
     }
   }
 }

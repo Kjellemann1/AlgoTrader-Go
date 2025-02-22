@@ -319,7 +319,7 @@ func (db *Database) connect() {
   var err error
   db.conn , err = sql.Open("mysql", url)
   if err != nil {
-    panic(err.Error())
+    log.Panicln(err.Error())
   }
 }
 
@@ -391,7 +391,7 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       NCloseOrders: nCloseOrders,
     }
     assets[assetClass][symbol].Qty = assets[assetClass][symbol].Qty.Add(qty)
-    log.Printf("[ INFO ]\t Retrieved position: %s %s %s", symbol, stratName, qty.String())
+    log.Printf("[ INFO ]\tRetrieved position: %s %s %s", symbol, stratName, qty.String())
   }
   log.Println("[ OK ]\tState retrieved from database")
 }
