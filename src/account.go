@@ -373,23 +373,14 @@ func updateAssetQty(p *Position, a *Asset, u *OrderUpdate) {
   a.Qty = *u.AssetQty
 
   if !a.sumPosQtysEqAssetQty() {
-    util.Warning(errors.New("Position quantities do not sum to asset quantity"))
-    diff := a.diffAssetQty()
-
-    if diff.IsPositive() {
-      request.CloseGTC("sell", *u.Symbol, "reconnect_diff", diff)
-    } else {
-      NNP.NoNewPositionsTrue("")
-      util.Error(errors.New("Position quantities exceed asset quantity"),
-        "Diff", diff,
-        "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
-      )
-      request.CloseAllPositions(2, 0)
-      log.Panicln("SHUTTING DOWN")
-    }
+    util.Error(
+      errors.New("Sum of position qty not equal to asset qty"),
+      "Asset", a.Qty, "Position", p.Qty, "OrderUpdate", u,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+    )
+    request.CloseAllPositions(2, 0)
+    log.Fatal("SHUTTING DOWN")
   }
-
-  log.Println("[ OK ]\tReconnect diff reconciled for", *u.Symbol)
 }
 
 func (a *Account) closeLogic(asset *Asset, pos *Position, u *OrderUpdate) {

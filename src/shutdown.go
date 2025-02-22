@@ -20,10 +20,17 @@ func stallIfOrdersPending(assets map[string]map[string]*Asset) {
       return
     } else {
       log.Println("Waiting for pending orders:")
-      for _, v := range pending {
-        for symbol := range v {
-          log.Println("  ->", symbol)
+      for symbol, positions := range pending {
+        count_open := 0
+        count_close := 0
+        for _, pos := range positions {
+          if pos.OpenOrderPending {
+            count_open++
+          } else {
+            count_close++
+          }
         }
+        log.Printf("  -> %s: %d open, %d close\n", symbol, count_open, count_close)
       }
     }
   }

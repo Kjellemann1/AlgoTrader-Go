@@ -33,6 +33,30 @@ var (
   DB_PORT string
 )
 
+var CRYPTO_LIST = []string{
+  "BTC/USD",
+  "ETH/USD",
+  "USDT/USD",
+  "SOL/USD",
+  "USDC/USD",
+  "DOGE/USD",
+  "LINK/USD",
+  "AVAX/USD",
+  // "LTC/USD",
+  // "SHIB/USD",
+  // "DOT/USD",
+  // "BCH/USD",
+  // "UNI/USD",
+  // "AAVE/USD",
+  // "YFI/USD",
+  // "MKR/USD",
+  // "GRT/USD",
+  // "XTZ/USD",
+  // "BAT/USD",
+  // "SUSHI/USD",
+  // "CRV/USD",
+}
+
 var STOCK_LIST = []string{
   // "AAPL",
   // "MSFT",
@@ -64,28 +88,4 @@ var STOCK_LIST = []string{
   // "AMD",
   // "CVX",
   // "NFLX",
-}
-
-var CRYPTO_LIST = []string{
-  "BTC/USD",
-  "ETH/USD",
-  "USDT/USD",
-  "SOL/USD",
-  "USDC/USD",
-  "DOGE/USD",
-  "LINK/USD",
-  "AVAX/USD",
-  // "LTC/USD",
-  // "SHIB/USD",
-  // "DOT/USD",
-  // "BCH/USD",
-  // "UNI/USD",
-  // "AAVE/USD",
-  // "YFI/USD",
-  // "MKR/USD",
-  // "GRT/USD",
-  // "XTZ/USD",
-  // "BAT/USD",
-  // "SUSHI/USD",
-  // "CRV/USD",
 }

@@ -135,7 +135,7 @@ type Asset struct {
   Symbol            string
   Positions         map[string]*Position
   Qty               decimal.Decimal
-  Class             string
+  Class        string
   Time              time.Time
   ReceivedTime      time.Time
   lastCloseIsTrade  bool
@@ -264,18 +264,17 @@ func (a *Asset) removePosition(strat_name string) {
   delete(a.Positions, strat_name)
 }
 
-func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string, asset_class string, last_close float64) (err error) {
+func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string, asset_class string, last_close float64) (int, error) {
   switch order_type {
     case "IOC":
-      err = request.OpenLongIOC(symbol, asset_class, order_id, last_close)
-      if err != nil {
-        return
-      }
+      status, err := request.OpenLongIOC(symbol, asset_class, order_id, last_close)
+      return status, err
   }
-  return
+
+  return 0, nil
 }
 
-func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, symbol string, qty decimal.Decimal) (err error) {
+func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, symbol string, qty decimal.Decimal) (int, error) {
   var side string
   switch open_side {
   case "long":
@@ -285,9 +284,10 @@ func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, sy
   }
   switch order_type {
     case "IOC":
-      err = request.CloseIOC(side, symbol, order_id, qty)
+      status, err := request.CloseIOC(side, symbol, order_id, qty)
+      return status, err
   }
-  return
+  return 0, nil
 }
 
 // Methods below this point are for being called from strategy functions
@@ -330,9 +330,9 @@ func (a *Asset) open(side string, order_type string, strat_name string) {
   a.Mutex.Unlock()
 
   a.initiatePositionObject(strat_name, order_type, side, order_id, trigger_time)
-  err := a.sendOpenOrder(order_type, order_id, symbol, asset_class, last_close)
-  if err != nil {
-    util.Warning(err, "Symbol", symbol, "Strat", strat_name, "OrderType", order_type, "Side", side)
+  status, err := a.sendOpenOrder(order_type, order_id, symbol, asset_class, last_close)
+  if err != nil || status != 200 {
+    util.Warning(err, "Status", status, "Symbol", symbol, "OrderID", order_id)
     a.removePosition(strat_name)
   }
 
@@ -367,10 +367,40 @@ func (a *Asset) close(order_type string, strat_name string) {
   pos.ClosePriceReceivedTime = a.ReceivedTime
   pos.Rwm.Unlock()
 
-  err := a.sendCloseOrder(open_side, order_type, order_id, symbol, qty)
-  if err != nil {
-    util.Error(err, symbol, order_id)
-    return
+  backoff_sec := 1
+  retries := 0
+
+  for {
+    if retries > 1 {
+      NNP.NoNewPositionsTrue("Close")
+      util.Error(errors.New("Close failed on retry"), "Symbol", symbol, "OrderID", order_id)
+    }
+
+    status, err := a.sendCloseOrder(open_side, order_type, order_id, symbol, qty)
+    if err != nil && retries == 0 {
+      util.Error(err, symbol, order_id)
+      break
+    }
+
+    switch status {
+    case 422:
+      log.Println("[ INFO ]\tClose cancelled due to 422 status code", a.Symbol)
+      return
+    case 403:
+      util.Warning(errors.New("Bad status code"), 
+        "Status", status, "Symbol", symbol, "OrderID", order_id,
+        "Retrying in (seconds)", backoff_sec,
+      )
+      util.BackoffWithMax(&backoff_sec, 20)
+    case 200:
+      if retries > 0 && err == nil {
+        util.Info("Close successful after retries", "Retries", retries, "Symbol", symbol, "OrderID", order_id)
+        NNP.NoNewPositionsFalse("Close")
+      }
+      return
+    default:
+      util.Warning(errors.New("Bad status code"), "Status", status)
+    }
   }
 }
 

@@ -8,6 +8,7 @@ import (
 
 func (a *Asset) rand() {
   a.Mutex.Lock()
+
   num1 := rand.Intn(100)
   num2 := rand.Intn(100)
 
