@@ -449,7 +449,11 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   if pos == nil {
     util.Error(errors.New("Position nil: %s"),
       "Symbol", *u.Symbol,
+      "StratName", *u.StratName,
+      "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
+    request.CloseAllPositions(2, 0)
+    log.Panicln("SHUTTING DOWN")
   }
 
   pos.Rwm.Lock()

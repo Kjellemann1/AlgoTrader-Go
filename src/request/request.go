@@ -115,7 +115,7 @@ func GetPositions(backoff_sec int, retries int) ([]*fastjson.Value, error) {
   return arr, nil
 }
 
-func OpenLongIOC(symbol string, asset_class string, order_id string, last_price float64) (int, error) {
+func OpenLongIOC(symbol string, asset_class string, position_id string, last_price float64) (int, error) {
   qty := CalculateOpenQty(asset_class, last_price)
   if qty.IsZero() {
     return 0, errors.New("Calculated open qty is zero")
@@ -123,16 +123,13 @@ func OpenLongIOC(symbol string, asset_class string, order_id string, last_price 
 
   payload := `{` +
     `"symbol": "` + symbol + `", ` +
-    `"client_order_id": "` + order_id + `", ` +
+    `"client_order_id": "` + position_id + `", ` +
     `"qty": "` + qty.String() + `", ` +
     `"side": "buy", "type": "market", "time_in_force": "ioc", "order_class": "simple"` +
   `}`
 
   status, err := SendOrder(payload)
   if err != nil || status != 200 {
-    if err == nil {
-      err = errors.New("Bad status code")
-    }
     return status, err
   }
 

@@ -264,10 +264,10 @@ func (a *Asset) removePosition(strat_name string) {
   delete(a.Positions, strat_name)
 }
 
-func (a *Asset) sendOpenOrder(order_type string, order_id string, symbol string, asset_class string, last_close float64) (int, error) {
+func (a *Asset) sendOpenOrder(order_type string, position_id string, symbol string, asset_class string, last_close float64) (int, error) {
   switch order_type {
     case "IOC":
-      status, err := request.OpenLongIOC(symbol, asset_class, order_id, last_close)
+      status, err := request.OpenLongIOC(symbol, asset_class, position_id, last_close)
       return status, err
   }
 
@@ -305,17 +305,16 @@ func (a *Asset) open(side string, order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
 
   if _, ok := a.Positions[strat_name]; ok {
-    log.Println("[ INFO ]\tOpen cancelled since trade already exists", a.Symbol)
     return
   }
 
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
-    log.Println("[ INFO ]\tOpen cancelled due to received time diff too large", a.Symbol)
+    log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tReceived time diff")
     return
   } 
 
   if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF_MS {
-    log.Println("[ INFO ]\tOpen cancelled due to trigger time diff too large", a.Symbol)
+    log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tTrigger time diff")
     return
   }
 
@@ -325,15 +324,36 @@ func (a *Asset) open(side string, order_type string, strat_name string) {
 
   last_close := a.C[constant.WINDOW_SIZE-1]
   symbol := a.Symbol
-  order_id := a.createPositionID(strat_name)
+  position_id := a.createPositionID(strat_name)
   asset_class := a.Class
-  a.Mutex.Unlock()
 
-  a.initiatePositionObject(strat_name, order_type, side, order_id, trigger_time)
-  status, err := a.sendOpenOrder(order_type, order_id, symbol, asset_class, last_close)
-  if err != nil || status != 200 {
-    util.Warning(err, "Status", status, "Symbol", symbol, "OrderID", order_id)
-    a.removePosition(strat_name)
+  a.Mutex.Unlock()
+  a.initiatePositionObject(strat_name, order_type, side, position_id, trigger_time)
+
+  backoff_sec := 1
+  retries := 0
+
+  for {
+    status, err := a.sendOpenOrder(order_type, position_id, symbol, asset_class, last_close)
+    if err != nil {
+      util.Error(err, "Symbol", symbol)
+      a.removePosition(strat_name)
+      break
+    }
+
+    if status == 403 {
+      util.Info("[ INFO ]\tWash trade block on Open", 
+        "Retrying in (seconds)", backoff_sec, "PositionID", position_id,
+      )
+      util.Backoff(&backoff_sec)
+      retries++
+    }
+
+    if retries > 1 {
+      log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tOpen failed on retry")
+      a.removePosition(strat_name)
+      break
+    }
   }
 
   a.Mutex.Lock()
@@ -358,7 +378,7 @@ func (a *Asset) close(order_type string, strat_name string) {
   open_side := pos.OpenSide
   symbol := pos.Symbol
   qty := pos.Qty
-  order_id := pos.PositionID
+  position_id := pos.PositionID
   pos.CloseOrderPending = true
   pos.CloseTriggerTime = trigger_time
   pos.CloseOrderType = order_type
@@ -371,35 +391,39 @@ func (a *Asset) close(order_type string, strat_name string) {
   retries := 0
 
   for {
-    if retries > 1 {
-      NNP.NoNewPositionsTrue("Close")
-      util.Error(errors.New("Close failed on retry"), "Symbol", symbol, "OrderID", order_id)
-    }
-
-    status, err := a.sendCloseOrder(open_side, order_type, order_id, symbol, qty)
-    if err != nil && retries == 0 {
-      util.Error(err, symbol, order_id)
-      break
+    status, err := a.sendCloseOrder(open_side, order_type, position_id, symbol, qty)
+    if err != nil {
+      util.Error(err, "PositionID", position_id)
     }
 
     switch status {
     case 422:
-      log.Println("[ INFO ]\tClose cancelled due to 422 status code", a.Symbol)
+      log.Println("[ CANCEL ]\t" + a.Symbol + "\tStatus:", status)
       return
     case 403:
-      util.Warning(errors.New("Bad status code"), 
-        "Status", status, "Symbol", symbol, "OrderID", order_id,
-        "Retrying in (seconds)", backoff_sec,
-      )
+      // TODO: Make sure this is actually a wash trade by checking response, and not
+      // insufficient funds, qty etc.
+      util.Info("[ INFO ]\tWash trade block on Close", "Retrying in (seconds)", backoff_sec)
       util.BackoffWithMax(&backoff_sec, 20)
+      retries++
     case 200:
       if retries > 0 && err == nil {
-        util.Info("Close successful after retries", "Retries", retries, "Symbol", symbol, "OrderID", order_id)
+        util.Info("Close successful after retries", "PositionID", position_id, "Retries", retries + 1)
         NNP.NoNewPositionsFalse("Close")
       }
       return
     default:
-      util.Warning(errors.New("Bad status code"), "Status", status)
+      NNP.NoNewPositionsTrue("Close")
+      util.Error(errors.New("Sending close order failed"),
+        "Symbol", symbol, "Status", status, "Retrying in (seconds)", backoff_sec,
+      )
+      util.BackoffWithMax(&backoff_sec, 20)
+      retries++
+    }
+
+    if retries > 1 {
+      NNP.NoNewPositionsTrue("Close")
+      util.Error(errors.New("Close failed on retry"), "PositionID", position_id, "Retries", retries)
     }
   }
 }

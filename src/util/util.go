@@ -38,10 +38,11 @@ func PrintFormattedJSON(v *fastjson.Value) {
   log.Println(buf.String())
 }
 
-func AddWhitespace(s *string, n int) {
-  for len(*s) < n {
-    *s += " "
+func AddWhitespace(s string, n int) string {
+  for len(s) < n {
+    s += " "
   }
+  return s
 }
 
 func Info(message string, details ...interface{}) {
