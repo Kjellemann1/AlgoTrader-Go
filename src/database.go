@@ -315,7 +315,7 @@ func (db *Database) listen() {
 }
 
 func (db *Database) connect() {
-  url := fmt.Sprintf("%s:%s@/%s", constant.DB_USER, constant.DB_PASSWORD, constant.DB_NAME)
+  url := fmt.Sprintf("%s:%s@/%s?parseTime=true", constant.DB_USER, constant.DB_PASSWORD, constant.DB_NAME)
   var err error
   db.conn , err = sql.Open("mysql", url)
   if err != nil {

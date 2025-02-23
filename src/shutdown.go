@@ -48,7 +48,7 @@ func shutdownHandler(marketCancel context.CancelFunc, accountCancel context.Canc
     fmt.Println("What do you want to do?")
     fmt.Printf("  -> 1) Abort\n  -> 2) Save state and shutdown\n  -> 3) Close all positions and shutdown\n")
     var input string
-    fmt.Scanln(&input)
+    _, _ = fmt.Scanln(&input)
 
     switch input {
     case "1":
@@ -64,7 +64,7 @@ func shutdownHandler(marketCancel context.CancelFunc, accountCancel context.Canc
       return
     case "3":
       fmt.Println("ARE YOU SURE YOU WANT TO CLOSE ALL POSITIONS? (y/n)")
-      fmt.Scanln(&input)
+      _, _ = fmt.Scanln(&input)
 
       switch input {
       case "Y", "y":
@@ -73,7 +73,7 @@ func shutdownHandler(marketCancel context.CancelFunc, accountCancel context.Canc
         marketCancel()
         accountCancel()
         fmt.Println("Do you want to clear the positions table? (y/n)")
-        fmt.Scanln(&input)
+        _, _ = fmt.Scanln(&input)
         if input == "Y" || input == "y" {
           db_chan <- &Query{Action: "delete_all_positions"}
         }

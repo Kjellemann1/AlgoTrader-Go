@@ -85,7 +85,7 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
       log.Println("[ OK ]\tConnected to websocket for", m.asset_class)
     case "authenticated":
       log.Println("[ OK ]\tAuthenticated with websocket for", m.asset_class)
-    case "subscription":
+    default: // subscription
       m.checkAllSymbolsInSubscription(element)
   }
 }

@@ -54,7 +54,7 @@ func (co *ClosedOrder) getFloat(element string) *float64 {
   }
   float, err := strconv.ParseFloat(string(byte), 64)
   if err != nil {
-    util.Warning(errors.New("Failed to convert filled_avg_price to float in order update"))
+    util.Warning(errors.New("failed to convert filled_avg_price to float in order update"))
   }
   return &float
 }
@@ -81,7 +81,7 @@ func (co *ClosedOrder) getFillTime() *time.Time {
   }
   fill_time_t, err := time.Parse(time.RFC3339, string(fill_time))
   if err != nil {
-    util.Warning(errors.New("Failed to convert fill_time to time.Time in update"))
+    util.Warning(errors.New("failed to convert fill_time to time.Time in update"))
   }
   return &fill_time_t
 }
@@ -118,26 +118,26 @@ func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string) {
     }
     switch status {
     case 403:
-      util.Warning(errors.New("Forbidden Block"),
+      util.Warning(errors.New("forbidden Block"),
         "Retries", retries,
         "Trying again in (seconds)", &backoff_sec,
       )
       util.Backoff(&backoff_sec)
     case 200:
       if retries > 0 {
-        util.Warning(errors.New("Order sent after retries"), "Retries", retries)
+        util.Warning(errors.New("order sent after retries"), "Retries", retries)
       }
       log.Println("[ OK ]\tReconciliation close order sent")
       return
     default:
-      util.Error(fmt.Errorf("Failed to send close order. Status: %d", status),
+      util.Error(fmt.Errorf("failed to send close order. Status: %d", status),
         "Retries", retries,
         "Trying again in (seconds)", &backoff_sec,
       )
       util.Backoff(&backoff_sec)
     }
     if retries >= 5 {
-      util.Error(errors.New("Max retries reached"),
+      util.Error(errors.New("max retries reached"),
         "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
       )
       request.CloseAllPositions(2, 0)
@@ -245,7 +245,7 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
           util.Warning(errors.New("PositionID not found"), nil)
           continue
         } else if symbol == nil {
-          util.Warning(errors.New("Symbol not found"), nil)
+          util.Warning(errors.New("symbol not found"), nil)
           continue
         }
         if string(position_id) == pos.PositionID {
