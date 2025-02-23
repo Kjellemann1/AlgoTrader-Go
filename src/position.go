@@ -71,11 +71,14 @@ func (p *Position) LogOpen() *Query {
     ReceivedTime: p.OpenPriceReceivedTime,
     TriggerTime: p.OpenTriggerTime,
     TriggerPrice: p.OpenTriggerPrice,
-    FillTime: p.OpenFillTime,
     FilledAvgPrice: p.OpenFilledAvgPrice,
     BadForAnalysis: p.BadForAnalysis,
   }
-
+  if !p.OpenFillTime.IsZero() {
+    query.FillTime = p.OpenFillTime
+  } else {
+    log.Printf("[ INFO ]\t%s\t%s\tOpen fill time is nil", p.Symbol, p.StratName)
+  }
   return query
 }
 
@@ -101,11 +104,14 @@ func (p *Position) LogClose() *Query {
     ReceivedTime: p.ClosePriceReceivedTime,
     TriggerTime: p.CloseTriggerTime,
     TriggerPrice: p.CloseTriggerPrice,
-    FillTime: p.CloseFillTime,
     FilledAvgPrice: p.CloseFilledAvgPrice,
     BadForAnalysis: p.BadForAnalysis,
     NCloseOrders: p.NCloseOrders,
   }
-
+  if !p.CloseFillTime.IsZero() {
+    query.FillTime = p.CloseFillTime
+  } else {
+    log.Printf("[ INFO ]\t%s\t%s\tClose fill time is nil", p.Symbol, p.StratName)
+  }
   return query
 }

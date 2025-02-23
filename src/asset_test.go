@@ -129,3 +129,31 @@ func TestFillMissingMinutes(t *testing.T) {
 		assert.Equal(t, b, a.L)
 	})
 }
+
+func TestPendingOrders(t *testing.T) {
+  a := newAssetTesting()
+  a.Positions = make(map[string]*Position)
+  a.Positions["1"] = &Position{OpenOrderPending: true, CloseOrderPending: false, Symbol: "Foo"}
+  a.Positions["2"] = &Position{OpenOrderPending: false, CloseOrderPending: true, Symbol: "Foo"}
+  a.Positions["3"] = &Position{OpenOrderPending: false, CloseOrderPending: false, Symbol: "Foo"}
+
+  b := newAssetTesting()
+  b.Positions = make(map[string]*Position)
+  b.Positions["1"] = &Position{OpenOrderPending: true, CloseOrderPending: false, Symbol: "Bar"}
+  b.Positions["2"] = &Position{OpenOrderPending: false, CloseOrderPending: true, Symbol: "Bar"}
+  b.Positions["3"] = &Position{OpenOrderPending: false, CloseOrderPending: false, Symbol: "Bar"}
+
+  assets := make(map[string]map[string]*Asset)
+  assets["x"], assets["y"] = make(map[string]*Asset), make(map[string]*Asset)
+  assets["x"]["a"], assets["y"]["b"] = a, b
+
+  pending := pendingOrders(assets)
+
+  assert.Equal(t, 2, len(pending))
+  assert.Equal(t, 2, len(pending["Foo"]))
+  assert.Equal(t, 2, len(pending["Bar"]))
+}
+
+func TestPositionsSymbols(t *testing.T) {
+
+}

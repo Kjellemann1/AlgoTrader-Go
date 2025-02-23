@@ -34,7 +34,6 @@ func (co *ClosedOrder) getString(element string) *string {
     return nil
   }
   str := string(byte)
-
   return &str
 }
 
@@ -52,12 +51,10 @@ func (co *ClosedOrder) getFloat(element string) *float64 {
   if byte == nil {
     return nil
   }
-
   float, err := strconv.ParseFloat(string(byte), 8)
   if err != nil {
     util.Warning(errors.New("Failed to convert filled_avg_price to float in order update"))
   }
-
   return &float
 }
 
@@ -66,7 +63,6 @@ func (co *ClosedOrder) getFilledQty() *decimal.Decimal {
   if byte == nil {
     return nil
   }
-
   dec, err := decimal.NewFromString(string(byte))
   if err != nil {
     NNP.NoNewPositionsTrue("")
@@ -74,7 +70,6 @@ func (co *ClosedOrder) getFilledQty() *decimal.Decimal {
     request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
-
   return &dec
 }
 
@@ -83,12 +78,10 @@ func (co *ClosedOrder) getFillTime() *time.Time {
   if fill_time == nil {
     return nil
   }
-
   fill_time_t, err := time.Parse(time.RFC3339, string(fill_time))
   if err != nil {
     util.Warning(errors.New("Failed to convert fill_time to time.Time in update"))
   }
-
   return &fill_time_t
 }
 
@@ -105,32 +98,27 @@ func (co *ClosedOrder) parse() *ParsedClosedOrder {
 
 func (a *Account) parseClosedOrders(relevant map[string][]*fastjson.Value) map[string][]*ParsedClosedOrder {
   parsed := make(map[string][]*ParsedClosedOrder)
-
   for symbol, arr := range relevant {
     for _, fjv := range arr {
       co := &ClosedOrder{fjv}
       parsed[symbol] = append(parsed[symbol], co.parse())
     }
   }
-
   return parsed
 }
 
 func (a *Account) closedOrderHandler(arr []*fastjson.Value) map[string][]*ParsedClosedOrder {
   parsed := make(map[string][]*ParsedClosedOrder)
-
   for _, m := range arr {
     co := &ClosedOrder{m}
     pco := co.parse()
     parsed[*pco.Symbol] = append(parsed[*pco.Symbol], pco)
   }
-
   return parsed
 }
 
 func (a *Account) diffMultiple(parsed []*ParsedClosedOrder, asset_class string) {
   asset := a.assets[asset_class][*parsed[0].Symbol]
-
   for _, pco := range parsed {
     pos := asset.Positions[*pco.StratName]
     pos.BadForAnalysis = true
@@ -138,7 +126,6 @@ func (a *Account) diffMultiple(parsed []*ParsedClosedOrder, asset_class string) 
     a.db_chan <-pos.LogClose()
     asset.removePosition(*pco.StratName)
   }
-
   diff := asset.Qty.Sub(asset.sumNoPendingPosQtys())
   if !diff.IsZero() {
     request.CloseGTC("sell", *parsed[0].Symbol, "strat[reconnect_mutliple_diff]", diff)
@@ -149,7 +136,6 @@ func (a *Account) diffPositive(diff decimal.Decimal, asset_class string, parsed 
   pco := parsed[0]
   asset := a.assets[asset_class][*pco.Symbol]
   pos := asset.Positions[*pco.StratName]
-
   pos.BadForAnalysis = true
   pos.Qty = diff
   pos.OpenFilledAvgPrice = *pco.FilledAvgPrice
@@ -161,9 +147,7 @@ func (a *Account) diffNegative(diff decimal.Decimal, asset_class string, parsed 
   pco := parsed[0]
   asset := a.assets[asset_class][*pco.Symbol]
   pos := asset.Positions[*pco.StratName]
-
   pos.BadForAnalysis = true
-
   if diff.LessThan(pos.Qty) {
     pos.Qty = diff
     pos.NCloseOrders++
@@ -171,7 +155,6 @@ func (a *Account) diffNegative(diff decimal.Decimal, asset_class string, parsed 
     asset.close("IOC", pos.StratName)
     return
   }
-
   pos.Qty = decimal.Zero
   pos.CloseFilledAvgPrice = *pco.FilledAvgPrice
   pos.CloseFillTime = *pco.FillTime
@@ -183,12 +166,10 @@ func (a *Account) diffZero(asset_class string, parsed []*ParsedClosedOrder) {
   pco := parsed[0]
   asset := a.assets[asset_class][*pco.Symbol]
   pos := asset.Positions[*pco.StratName]
-
   if *pco.Side == "buy" {
     asset.removePosition(*pco.StratName)
     return
   }
-
   pos.BadForAnalysis = true
   pos.NCloseOrders++
   pos.CloseOrderPending = false
@@ -203,17 +184,14 @@ func (a *Account) updatePositions(parsed map[string][]*ParsedClosedOrder) {
     request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
-
   for asset_class := range a.assets {
     for symbol := range parsed {
       if len(parsed[symbol]) > 1 {
         a.diffMultiple(parsed[symbol], asset_class)
         continue
       }
-
       diff := qtys[symbol].Sub((*a.assets[asset_class][symbol]).Qty)
       a.assets[asset_class][symbol].Qty = qtys[symbol]
-
       switch {
       case diff.IsPositive():
         a.diffPositive(diff, asset_class, parsed[symbol])
@@ -228,13 +206,11 @@ func (a *Account) updatePositions(parsed map[string][]*ParsedClosedOrder) {
 
 func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string][]*Position) map[string][]*fastjson.Value {
   relevant := make(map[string][]*fastjson.Value)
-
   for _, m := range arr {
     for _, v := range pending {
       for _, pos := range v {
         position_id := m.GetStringBytes("client_order_id")  // client_order_id == PositionID
         symbol := m.GetStringBytes("symbol")
-
         if position_id == nil {
           util.Warning(errors.New("PositionID not found"), nil)
           continue
@@ -242,7 +218,6 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
           util.Warning(errors.New("Symbol not found"), nil)
           continue
         }
-
         if string(position_id) == pos.PositionID {
           relevant[string(symbol)] = append(relevant[string(symbol)], m)
           break
@@ -250,20 +225,17 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
       }
     }
   }
-
   return relevant
 }
 
 func (a *Account) checkPending() {
   globRwm.RLock()
   defer globRwm.RUnlock()
-
   pending := pendingOrders(a.assets)
   if len(pending) == 0 {
     log.Println("[ OK ]\tNo pending orders")
     return
   }
-
   arr, err := request.GetClosedOrders(positionsSymbols(pending), 5, 3)
   if err != nil {
     NNP.NoNewPositionsTrue("")
@@ -271,15 +243,12 @@ func (a *Account) checkPending() {
     request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
-
   relevant := a.filterRelevantOrders(arr, pending)
   if len(relevant) == 0 {
     log.Println("[ OK ]\tNo pending orders closed")
     return
   }
-
   parsed := a.parseClosedOrders(relevant)
   a.updatePositions(parsed)
-
   log.Println("[ OK ]\tPending orders updated")
 }

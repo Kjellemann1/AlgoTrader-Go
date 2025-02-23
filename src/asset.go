@@ -333,10 +333,9 @@ func (a *Asset) openLoop(order_type string, position_id string, symbol string, a
       }
       return
     case 403:
-      log.Printf("[ INFOR ]\t%s\tWash trade block on Open\tRetrying in (%d) seconds ...", symbol, backoff_sec)
+      log.Printf("[ INFO ]\t%s\tWash trade block on Open\tRetrying in (%d) seconds ...", symbol, backoff_sec)
       util.Backoff(&backoff_sec)
       retries++
-      return
     }
   }
 }
@@ -348,8 +347,8 @@ func (a *Asset) open(side string, order_type string, strat_name string) {
   }
   last_close := a.C[constant.WINDOW_SIZE-1]
   symbol := a.Symbol
-  position_id := a.createPositionID(strat_name)
   asset_class := a.Class
+  position_id := a.createPositionID(strat_name)
   a.Mutex.Unlock()
   a.initiatePositionObject(strat_name, order_type, side, position_id, trigger_time)
   a.openLoop(order_type, position_id, symbol, asset_class, strat_name, last_close)
@@ -385,12 +384,12 @@ func (a *Asset) closeLoop(strat_name string, open_side string, order_type string
     case 403:
       // TODO: Make sure this is actually a wash trade by checking response, and not
       // insufficient funds, qty etc.
-      log.Printf("%s\tWash trade block on Close\tRetrying in (%d) seconds ...", symbol, backoff_sec)
+      log.Printf("[ INFO ]\t%s\tWash trade block on Close\tRetrying in (%d) seconds ...", symbol, backoff_sec)
       util.BackoffWithMax(&backoff_sec, 20)
       retries++
     case 200:
       if retries == 1 {
-        log.Printf("[ INFO ]\tClose successful on retry")
+        log.Printf("[ INFO ]\t%s\t%s\tClose successful on retry", symbol, strat_name)
       } else if retries > 1 {
         util.Info("Close successful after retries", "Symbol", symbol, "Strat", strat_name, "Retries", retries)
         NNP.NoNewPositionsFalse("Close")
