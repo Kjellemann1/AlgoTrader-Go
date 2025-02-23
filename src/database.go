@@ -371,6 +371,11 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       &receivedTime,
       &nCloseOrders,
     )
+    if err != nil {
+      util.Error(err, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
+      request.CloseAllPositions(2, 0)
+      log.Panicln("SHUTTING DOWN")
+    }
     assets[assetClass][symbol].Positions[stratName] = &Position{
       Symbol: symbol,
       AssetClass: assetClass,

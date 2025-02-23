@@ -96,7 +96,7 @@ func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
   return qty
 }
 
-func GetPositions(backoff_sec int, retries int) ([]*fastjson.Value, error) {
+func GetPositions(backoff_sec int, retries int) (arr []*fastjson.Value, err error) {
   if retries >= 4 {
     return nil, errors.New("Max retries reached. Failed to get positions.")
   }
@@ -105,9 +105,10 @@ func GetPositions(backoff_sec int, retries int) ([]*fastjson.Value, error) {
     util.Error(err, "Trying again in (seconds)", &backoff_sec)
     util.Backoff(&backoff_sec)
     retries++
-    GetPositions(backoff_sec, retries)
+    arr, err = GetPositions(backoff_sec, retries)
+  } else {
+    arr, err = parseBody(body)
   }
-  arr, err := parseBody(body)
   if err != nil {
     return nil, err
   }
@@ -224,7 +225,7 @@ func urlGetClosedOrders(symbols map[string]map[string]int) (url string) {
   return
 }
 
-func GetClosedOrders(symbols map[string]map[string]int, backoff_sec int, retries int) ([]*fastjson.Value, error) {
+func GetClosedOrders(symbols map[string]map[string]int, backoff_sec int, retries int) (parsed []*fastjson.Value, err error) {
   if retries >= 4 {
     return nil, errors.New("Max retries reached. Failed to get closed orders.")
   }
@@ -239,15 +240,13 @@ func GetClosedOrders(symbols map[string]map[string]int, backoff_sec int, retries
     )
     util.Backoff(&backoff_sec)
     retries++
-    GetClosedOrders(symbols, backoff_sec, retries)
+    parsed, err = GetClosedOrders(symbols, backoff_sec, retries)
+  } else {
+    parsed, err = parseBody(body)
   }
 
-  parsed, err := parseBody(body)
   if err != nil {
-    util.Error(err, "Trying again in (seconds)", &backoff_sec)
-    util.Backoff(&backoff_sec)
-    retries++
-    GetClosedOrders(symbols, backoff_sec, retries)
+    return nil, err
   }
 
   if retries > 0 {

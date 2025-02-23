@@ -44,13 +44,16 @@ func pendingOrders(assets map[string]map[string]*Asset) map[string][]*Position {
 
 func positionsSymbols(positions map[string][]*Position) map[string]map[string]int {
   symbols := make(map[string]map[string]int)
+  for _, l := range positions {
+    for _, p := range l {
+      if _, ok := symbols[p.AssetClass]; !ok {
+        symbols[p.AssetClass] = make(map[string]int)
+      }
+    }
+  }
   for s, l := range positions {
     for _, p := range l {
-      if p.AssetClass == "stock" {
-        symbols["stock"][s] = 1
-      } else {
-        symbols["crypto"][s] = 1
-      }
+      symbols[p.AssetClass][s] = 1
     }
   }
   return symbols
@@ -78,19 +81,6 @@ func (a *Asset) sumNoPendingPosQtys() decimal.Decimal {
   return count
 }
 
-func (a *Asset) diffAssetQty() decimal.Decimal {
-  // Returns the difference between asset qty on the server and the local asset qty
-  // Diff is positive if server qty is higher than local qty
-  qtys, err := request.GetAssetQtys()
-  if err != nil {
-    NNP.NoNewPositionsTrue("")
-    util.Error(err, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
-    request.CloseAllPositions(2, 0)
-    log.Panicln("SHUTTING DOWN")
-  }
-  return qtys[a.Symbol].Sub(a.Qty)
-}
-
 // Moves each element one step to the left, and inserts the new value at the tail.
 func rollFloat(arr *[]float64, v float64) {
   copy((*arr)[:constant.WINDOW_SIZE-1], (*arr)[1:])
@@ -108,7 +98,7 @@ func (a *Asset) fillMissingMinutes(t time.Time) {
   }
   missingMinutes := int(t.Sub(a.Time).Minutes()) - 1
   if missingMinutes > 0 {
-    for i := 0; i < missingMinutes; i++ {
+    for range missingMinutes {
       if a.lastCloseIsTrade {
         a.C[constant.WINDOW_SIZE-1] = a.C[constant.WINDOW_SIZE-2]
       } else {
@@ -167,7 +157,7 @@ func newAsset(asset_class string, symbol string) (a *Asset) {
 func (a *Asset) startStrategies() {
   n := len(a.strategies)
   a.channels = make([]chan struct{}, n)
-  for i := 0; i < n; i++ {
+  for i := range n {
     a.channels[i] = make(chan struct{})
     go func(idx int) {
       for range a.channels[idx] {
@@ -305,7 +295,7 @@ func (a *Asset) openChecks(strat_name string, trigger_time time.Time) bool {
     log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tTrigger time diff")
     return false
   }
-  if NNP.Flag == true {
+  if !NNP.Flag {
     return false
   }
   return true
@@ -329,11 +319,11 @@ func (a *Asset) openLoop(order_type string, position_id string, symbol string, a
     switch status {
     case 200:
       if retries > 0 {
-        log.Printf("[ INFO ]\tOpen successful on retry\n  -> Symbol: %s\n  -> Strat: %s\n", symbol, strat_name)
+        log.Printf("[ INFO ]\t%s\t%s\tOpen successful on retry\n", util.AddWhitespace(symbol, 10), strat_name)
       }
       return
     case 403:
-      log.Printf("[ INFO ]\t%s\tWash trade block on Open\tRetrying in (%d) seconds ...", symbol, backoff_sec)
+      log.Printf("[ INFO ]\t%s\tWash trade block on Open\tRetrying in (%d) seconds ...", util.AddWhitespace(symbol, 10), backoff_sec)
       util.Backoff(&backoff_sec)
       retries++
     }
@@ -384,12 +374,12 @@ func (a *Asset) closeLoop(strat_name string, open_side string, order_type string
     case 403:
       // TODO: Make sure this is actually a wash trade by checking response, and not
       // insufficient funds, qty etc.
-      log.Printf("[ INFO ]\t%s\tWash trade block on Close\tRetrying in (%d) seconds ...", symbol, backoff_sec)
+      log.Printf("[ INFO ]\t%s\tWash trade block on Close\tRetrying in (%d) seconds ...", util.AddWhitespace(symbol, 10), backoff_sec)
       util.BackoffWithMax(&backoff_sec, 20)
       retries++
     case 200:
       if retries == 1 {
-        log.Printf("[ INFO ]\t%s\t%s\tClose successful on retry", symbol, strat_name)
+        log.Printf("[ INFO ]\t%s\t%s\tClose successful on retry", util.AddWhitespace(symbol, 10), strat_name)
       } else if retries > 1 {
         util.Info("Close successful after retries", "Symbol", symbol, "Strat", strat_name, "Retries", retries)
         NNP.NoNewPositionsFalse("Close")
@@ -465,5 +455,4 @@ func (a *Asset) takeProfit(percent float64, strat_name string) {
 func (a *Asset) trailingStop() {
   // TODO
   log.Println("[ INFO ]\tTrailingStop not implemented")
-  return
 }

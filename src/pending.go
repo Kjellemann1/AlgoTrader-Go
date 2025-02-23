@@ -5,6 +5,7 @@
 package main
 
 import(
+  "fmt"
   "log"
   "time"
   "errors"
@@ -51,7 +52,7 @@ func (co *ClosedOrder) getFloat(element string) *float64 {
   if byte == nil {
     return nil
   }
-  float, err := strconv.ParseFloat(string(byte), 8)
+  float, err := strconv.ParseFloat(string(byte), 64)
   if err != nil {
     util.Warning(errors.New("Failed to convert filled_avg_price to float in order update"))
   }
@@ -107,14 +108,43 @@ func (a *Account) parseClosedOrders(relevant map[string][]*fastjson.Value) map[s
   return parsed
 }
 
-func (a *Account) closedOrderHandler(arr []*fastjson.Value) map[string][]*ParsedClosedOrder {
-  parsed := make(map[string][]*ParsedClosedOrder)
-  for _, m := range arr {
-    co := &ClosedOrder{m}
-    pco := co.parse()
-    parsed[*pco.Symbol] = append(parsed[*pco.Symbol], pco)
+func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string) {
+  backoff_sec := 1
+  retries := 0
+  for {
+    status, err := request.CloseGTC("sell", symbol, "strat[reconnect_mutliple_diff]", diff)
+    if err != nil {
+      util.Error(err, "Failed to send close order", "...")
+    }
+    switch status {
+    case 403:
+      util.Warning(errors.New("Forbidden Block"),
+        "Retries", retries,
+        "Trying again in (seconds)", &backoff_sec,
+      )
+      util.Backoff(&backoff_sec)
+    case 200:
+      if retries > 0 {
+        util.Warning(errors.New("Order sent after retries"), "Retries", retries)
+      }
+      log.Println("[ OK ]\tReconciliation close order sent")
+      return
+    default:
+      util.Error(fmt.Errorf("Failed to send close order. Status: %d", status),
+        "Retries", retries,
+        "Trying again in (seconds)", &backoff_sec,
+      )
+      util.Backoff(&backoff_sec)
+    }
+    if retries >= 5 {
+      util.Error(errors.New("Max retries reached"),
+        "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+      )
+      request.CloseAllPositions(2, 0)
+      log.Panicln("SHUTTING DOWN")
+    }
+    retries++
   }
-  return parsed
 }
 
 func (a *Account) diffMultiple(parsed []*ParsedClosedOrder, asset_class string) {
@@ -126,9 +156,9 @@ func (a *Account) diffMultiple(parsed []*ParsedClosedOrder, asset_class string) 
     a.db_chan <-pos.LogClose()
     asset.removePosition(*pco.StratName)
   }
-  diff := asset.Qty.Sub(asset.sumNoPendingPosQtys())
-  if !diff.IsZero() {
-    request.CloseGTC("sell", *parsed[0].Symbol, "strat[reconnect_mutliple_diff]", diff)
+  diff_no_pending := asset.Qty.Sub(asset.sumNoPendingPosQtys())
+  if !diff_no_pending.IsZero() {
+    a.sendCloseGTC(diff_no_pending, *parsed[0].Symbol)
   }
 }
 
@@ -196,7 +226,7 @@ func (a *Account) updatePositions(parsed map[string][]*ParsedClosedOrder) {
       case diff.IsPositive():
         a.diffPositive(diff, asset_class, parsed[symbol])
       case diff.IsNegative():
-        a.diffPositive(diff, asset_class, parsed[symbol])
+        a.diffNegative(diff, asset_class, parsed[symbol])
       default:
         a.diffZero(asset_class, parsed[symbol])
       }

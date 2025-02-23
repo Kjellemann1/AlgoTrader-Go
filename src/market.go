@@ -41,7 +41,7 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Mar
 }
 
 func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
-  for i := 0; i < n_workers; i++ {
+  for range n_workers {
     wg.Add(1)
     go func() {
       defer wg.Done()
@@ -70,7 +70,7 @@ func (m *Market) checkAllSymbolsInSubscription(element *fastjson.Value) {
       subs[sub_type][i] = string(fj_symbol.GetStringBytes())
     }
     for _, symbol := range subs[sub_type] {
-      if slices.Contains(*symbol_list_ptr, symbol) == false {
+      if !slices.Contains(*symbol_list_ptr, symbol) {
         log.Panicln("Missing symbol in subscription", symbol)
       }
     }
@@ -92,8 +92,7 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
 
 func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.Time) {
   // TODO: Check within opening hours if stock
-  symbol := string(element.GetStringBytes("S"))
-  asset := m.assets[symbol]
+  asset := m.assets[string(element.GetStringBytes("S"))]
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   t = t.Add(1 * time.Minute)
   asset.updateWindowOnBar(
@@ -109,10 +108,9 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.T
 
 func (m *Market) onMarketTradeUpdate(element *fastjson.Value, received_time time.Time) {
   // TODO: Check within opening hours if stock
-  symbol := string(element.GetStringBytes("S"))
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   price := element.GetFloat64("p")
-  asset := m.assets[symbol]
+  asset := m.assets[string(element.GetStringBytes("S"))]
   asset.updateWindowOnTrade(price, t, received_time)
   asset.checkForSignal()
 }
@@ -162,13 +160,16 @@ func (m *Market) connect() (err error) {
     return
   }
   var message []byte
-  for i := 0; i < 2; i++ {
+  for range 2 {
     _, message, err = m.conn.ReadMessage()
     if err != nil {
       log.Println("Message", string(message))
       return
     }
-    m.messageHandler(MarketMessage{message, time.Now().UTC()})
+    err = m.messageHandler(MarketMessage{message, time.Now().UTC()})
+    if err != nil {
+      util.Warning(err)
+    }
   }
 
   if err = m.subscribe(); err != nil {
@@ -186,7 +187,7 @@ func (m *Market) subscribe() (err error) {
   if m.asset_class == "crypto" {
     sub_msg_symbols = strings.Join(constant.CRYPTO_LIST, "\",\"")
   }
-  sub_msg := []byte(fmt.Sprintf(`{"action":"subscribe", "trades":["%s"], "bars":["%s"]}`, sub_msg_symbols, sub_msg_symbols))
+  sub_msg := fmt.Appendf(make([]byte, 0), `{"action":"subscribe", "trades":["%s"], "bars":["%s"]}`, sub_msg_symbols, sub_msg_symbols)
   if err = m.conn.WriteMessage(websocket.TextMessage, sub_msg); err != nil {
     return
   }
@@ -194,7 +195,10 @@ func (m *Market) subscribe() (err error) {
   if err != nil {
     return
   }
-  m.messageHandler(MarketMessage{sub_msg, time.Now().UTC()})
+  err = m.messageHandler(MarketMessage{sub_msg, time.Now().UTC()})
+  if err != nil {
+    return
+  }
   return
 }
 
@@ -204,7 +208,10 @@ func (m *Market) PingPong(ctx context.Context) {
   }
 
   m.conn.SetPongHandler(func(string) error {
-    m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC))
+    err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC))
+    if err != nil {
+      return err
+    }
     return nil
   })
 
@@ -228,7 +235,7 @@ func (m *Market) PingPong(ctx context.Context) {
   }
 }
 
-func (m *Market) listen(ctx context.Context) error {
+func (m *Market) listen(ctx context.Context) {
   wg := sync.WaitGroup{}
   defer wg.Wait()
   n_workers := len(m.assets)
@@ -240,7 +247,7 @@ func (m *Market) listen(ctx context.Context) error {
     if err != nil {
       select {
       case <-ctx.Done():
-        return ctx.Err()
+        return
       default:
         util.Error(err)
         continue
@@ -252,10 +259,9 @@ func (m *Market) listen(ctx context.Context) error {
 
 func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
-  backoff_sec := 5
+  backoff_sec := 2
   retries := 0
   initial := true
-
   for {
     select {
     case <-ctx.Done():
@@ -279,7 +285,6 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
         retries++
         continue
       }
-
       if err := m.subscribe(); err != nil {
         if initial {
           log.Panicln(err.Error())
@@ -289,11 +294,9 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
         retries++
         continue
       }
-
       initial = false
       backoff_sec = 5
       retries = 0
-
       go m.listen(ctx)
       m.PingPong(ctx)
       m.conn.Close()

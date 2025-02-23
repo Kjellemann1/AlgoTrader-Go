@@ -89,9 +89,7 @@ func (a *Account) connect() (err error) {
     log.Println("Response", response.Body)
     return err
   }
-  err = a.conn.WriteMessage(websocket.TextMessage, []byte(
-    fmt.Sprintf(`{"action":"auth","key":"%s","secret":"%s"}`, constant.KEY, constant.SECRET),
-  ))
+  err = a.conn.WriteMessage(websocket.TextMessage, fmt.Appendf(make([]byte, 0), `{"action":"auth","key":"%s","secret":"%s"}`, constant.KEY, constant.SECRET))
   if err != nil {
     return
   }
@@ -133,7 +131,10 @@ func (a *Account) PingPong(ctx context.Context) {
   }
 
   a.conn.SetPongHandler(func(string) error {
-    a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC))
+    err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC))
+    if err != nil {
+      util.Warning(err)
+    }
     return nil
   })
 
@@ -158,9 +159,8 @@ func (a *Account) PingPong(ctx context.Context) {
 
 func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
-  backoff_sec := 5
+  backoff_sec := 2
   retries := 0
-
   for {
     select {
     case <-ctx.Done():
@@ -182,10 +182,8 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
         retries++
         continue
       }
-
       backoff_sec = 5
       retries = 0
-
       go a.checkPending()
       go a.listen(ctx)
       a.PingPong(ctx)
@@ -229,7 +227,7 @@ func grepStratName(position_id *string) *string {
   pattern := `strat\[(.*?)\]`
   re := regexp.MustCompile(pattern)
   match := re.FindStringSubmatch(*position_id)
-  if match != nil && len(match) > 1 {
+  if len(match) > 1 {
     return &match[1]
   }
   return nil
@@ -327,7 +325,7 @@ func (p *AccountMessage) getFilledAvgPrice() *float64 {
     return nil
   }
 
-  filled_avg_price_float, err := strconv.ParseFloat(string(filled_avg_price), 8)
+  filled_avg_price_float, err := strconv.ParseFloat(string(filled_avg_price), 64)
   if err != nil {
     util.Warning(errors.New("Failed to convert filled_avg_price to float in order update"))
   }

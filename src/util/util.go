@@ -15,11 +15,7 @@ import (
 
 func BackoffWithMax(backoff_sec *int, backoff_max_sec int) {
   time.Sleep(time.Duration(*backoff_sec) * time.Second)
-  if *backoff_sec >= backoff_max_sec {
-    *backoff_sec = backoff_max_sec
-  } else{
-    *backoff_sec = *backoff_sec * 2
-  }
+  *backoff_sec = min(*backoff_sec * 2, backoff_max_sec)
 }
 
 func Backoff(backoff_sec *int) {
@@ -45,7 +41,7 @@ func AddWhitespace(s string, n int) string {
   return s
 }
 
-func Info(message string, details ...interface{}) {
+func Info(message string, details ...any) {
   logMsg := "[ INFO ]\t" + message
   for i := 0; i < len(details); i += 2 {
     key, ok := details[i].(string)
@@ -59,9 +55,9 @@ func Info(message string, details ...interface{}) {
   push.Info(logMsg)
 }
 
-func Error(err error, details ...interface{}) {
+func Error(err error, details ...any) {
   if err == nil {
-    err = errors.New("Called with nil error")
+    log.Println(errors.New("Called with nil error"))
     return
   }
   _, file, line, ok := runtime.Caller(1)
@@ -84,9 +80,9 @@ func Error(err error, details ...interface{}) {
   push.Error(logMsg)
 }
 
-func ErrorPanic(err error, details ...interface{}) {
+func ErrorPanic(err error, details ...any) {
   if err == nil {
-    err = errors.New("Called with nil error")
+    log.Println(errors.New("Called with nil error"))
     return
   }
   _, file, line, ok := runtime.Caller(1)
@@ -109,9 +105,9 @@ func ErrorPanic(err error, details ...interface{}) {
   push.Error(logMsg)
 }
 
-func Warning(err error, details ...interface{}) {
+func Warning(err error, details ...any) {
   if err == nil {
-    err = errors.New("Called with nil error")
+    log.Println(errors.New("Called with nil error"))
     return
   }
   _, file, line, ok := runtime.Caller(1)
@@ -135,9 +131,9 @@ func Warning(err error, details ...interface{}) {
 }
 
 // Caller 2
-func Error2(err error, details ...interface{}) {
+func Error2(err error, details ...any) {
   if err == nil {
-    err = errors.New("Called with nil error")
+    log.Println(errors.New("Called with nil error"))
     return
   }
 
@@ -161,9 +157,9 @@ func Error2(err error, details ...interface{}) {
   push.Error(logMsg)
 }
 
-func Warning2(err error, details ...interface{}) {
+func Warning2(err error, details ...any) {
   if err == nil {
-    err = errors.New("Called with nil error")
+    log.Println(errors.New("Called with nil error"))
     return
   }
   _, file, line, ok := runtime.Caller(2)

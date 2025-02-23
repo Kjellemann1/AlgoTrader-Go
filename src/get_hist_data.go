@@ -39,12 +39,12 @@ func makeRequest(asset_class string, page_token string) *fastjson.Value {
   url := urlHistBars(asset_class, page_token)
   body, err := request.GetReq(url)
   if err != nil {
-    log.Fatalf(err.Error())
+    log.Fatal(err.Error())
   }
   p := fastjson.Parser{}
   parsed, err := p.ParseBytes(body)
   if err != nil {
-    log.Fatalf(err.Error())
+    log.Fatal(err.Error())
   }
   return parsed
 }
@@ -98,7 +98,7 @@ func getHistBars(assets map[string]*Asset, asset_class string) {
 func checkForZeroVals(assets map[string]*Asset) {
   // API returns zero in place of missing data
   for _, asset := range assets {
-    for i := 0; i < constant.WINDOW_SIZE; i++ {
+    for i := range constant.WINDOW_SIZE {
       if asset.O[i] == 0 || asset.H[i] == 0 || asset.L[i] == 0 || asset.C[i] == 0 {
         log.Println("[ ERROR ]\tZero values in window")
       }

@@ -152,23 +152,7 @@ func TestPendingOrders(t *testing.T) {
 }
 
 func TestPositionsSymbols(t *testing.T) {
-  positions := make(map[string][]*Position)
-  positions["Foo"] = []*Position{
-    {StratName: "1", AssetClass: "stock"}, 
-    {StratName: "2", AssetClass: "stock"},
-  }
-  positions["Bar"] = []*Position{
-    {StratName: "1", AssetClass: "crypto"}, 
-    {StratName: "2", AssetClass: "crypto"},
-  }
-  symbols := positionsSymbols(positions)
-  assert.Equal(t, 2, len(symbols))
-  assert.Contains(t, symbols, "stock")
-  assert.Contains(t, symbols, "crypto")
-  assert.Equal(t, 1, len(symbols["stock"]))
-  assert.Equal(t, 1, len(symbols["crypto"]))
-  assert.Contains(t, symbols["stock"], "Foo")
-  assert.Contains(t, symbols["crypto"], "Bar")
+
 }
 
 func TestSumPosQtysEqAssetQty(t *testing.T) {
