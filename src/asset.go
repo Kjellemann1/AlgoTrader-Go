@@ -295,7 +295,7 @@ func (a *Asset) openChecks(strat_name string, trigger_time time.Time) bool {
     log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tTrigger time diff")
     return false
   }
-  if !NNP.Flag {
+  if NNP.Flag {
     return false
   }
   return true

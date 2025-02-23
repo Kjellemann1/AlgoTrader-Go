@@ -171,11 +171,6 @@ func (m *Market) connect() (err error) {
       util.Warning(err)
     }
   }
-
-  if err = m.subscribe(); err != nil {
-    return
-  }
-
   return
 }
 

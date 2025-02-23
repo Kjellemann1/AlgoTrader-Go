@@ -24,7 +24,7 @@ func (n *NoNewPositions) NoNewPositionsFalse(id string) {
   defer n.rwm.Unlock()
   n.m[id] = false
   for _, val := range n.m {
-    if !val {
+    if val {
       return
     }
   }
