@@ -13,27 +13,23 @@ import (
 
 func prepAssetsMap() map[string]map[string]*Asset {
   assets := make(map[string]map[string]*Asset)
-
   if len(constant.STOCK_LIST) > 0 {
     assets["stock"] = make(map[string]*Asset)
     for _, symbol := range constant.STOCK_LIST {
       assets["stock"][symbol] = newAsset("stock", symbol)
     }
   }
-
   if len(constant.CRYPTO_LIST) > 0 {
     assets["crypto"] = make(map[string]*Asset)
     for _, symbol := range constant.CRYPTO_LIST {
       assets["crypto"][symbol] = newAsset("crypto", symbol)
     }
   }
-
   return assets
 }
 
 func pendingOrders(assets map[string]map[string]*Asset) map[string][]*Position {
   pending := make(map[string][]*Position, 0)
-
   for _, asset_class := range assets {
     for _, asset := range asset_class {
       for _, pos := range asset.Positions {
@@ -43,13 +39,11 @@ func pendingOrders(assets map[string]map[string]*Asset) map[string][]*Position {
       }
     }
   }
-
   return pending
 }
 
 func positionsSymbols(positions map[string][]*Position) map[string]map[string]int {
   symbols := make(map[string]map[string]int)
-
   for s, l := range positions {
     for _, p := range l {
       if p.AssetClass == "stock" {
@@ -59,7 +53,6 @@ func positionsSymbols(positions map[string][]*Position) map[string]map[string]in
       }
     }
   }
-
   return symbols
 }
 
@@ -270,7 +263,6 @@ func (a *Asset) sendOpenOrder(order_type string, position_id string, symbol stri
       status, err := request.OpenLongIOC(symbol, asset_class, position_id, last_close)
       return status, err
   }
-
   return 0, nil
 }
 
@@ -301,88 +293,70 @@ func (a *Asset) s(arr *[]float64, from int, to int) (slice []float64) {
   return
 }
 
-func (a *Asset) open(side string, order_type string, strat_name string) {
-  trigger_time := time.Now().UTC()
-
+func (a *Asset) openChecks(strat_name string, trigger_time time.Time) bool {
   if _, ok := a.Positions[strat_name]; ok {
-    return
+    return false
   }
-
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
     log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tReceived time diff")
-    return
+    return false
   } 
-
   if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF_MS {
     log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tTrigger time diff")
-    return
+    return false
   }
-
   if NNP.Flag == true {
-    return
+    return false
   }
+  return true
+}
 
-  last_close := a.C[constant.WINDOW_SIZE-1]
-  symbol := a.Symbol
-  position_id := a.createPositionID(strat_name)
-  asset_class := a.Class
-
-  a.Mutex.Unlock()
-  a.initiatePositionObject(strat_name, order_type, side, position_id, trigger_time)
-
+func (a *Asset) openLoop(order_type string, position_id string, symbol string, asset_class string, strat_name string, last_close float64) {
   backoff_sec := 1
   retries := 0
-
-  Loop:
   for {
     status, err := a.sendOpenOrder(order_type, position_id, symbol, asset_class, last_close)
     if err != nil {
       util.Error(err, "Symbol", symbol)
       a.removePosition(strat_name)
-      break Loop
+      return
     }
-
     if retries > 1 {
-      log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tOpen failed on retry")
+      log.Println("[ CANCEL ]\t" +  util.AddWhitespace(symbol, 10) + "\tOpen failed on retry")
       a.removePosition(strat_name)
-      break
+      return
     }
-
     switch status {
     case 200:
       if retries > 0 {
-        log.Printf("[ INFO ]\tOpen successful on retry\n  -> Symbol: %s\n  -> Strat: %s\n", a.Symbol, strat_name)
+        log.Printf("[ INFO ]\tOpen successful on retry\n  -> Symbol: %s\n  -> Strat: %s\n", symbol, strat_name)
       }
-      break Loop
+      return
     case 403:
-      util.Info("Wash trade block on Open", 
-        "Retrying in (seconds)", backoff_sec, "Symbol", symbol, "Strat", strat_name,
-      )
+      log.Printf("[ INFOR ]\t%s\tWash trade block on Open\tRetrying in (%d) seconds ...", symbol, backoff_sec)
       util.Backoff(&backoff_sec)
       retries++
-      continue Loop
+      return
     }
   }
+}
 
+func (a *Asset) open(side string, order_type string, strat_name string) {
+  trigger_time := time.Now().UTC()
+  if !a.openChecks(strat_name, trigger_time) {
+    return
+  }
+  last_close := a.C[constant.WINDOW_SIZE-1]
+  symbol := a.Symbol
+  position_id := a.createPositionID(strat_name)
+  asset_class := a.Class
+  a.Mutex.Unlock()
+  a.initiatePositionObject(strat_name, order_type, side, position_id, trigger_time)
+  a.openLoop(order_type, position_id, symbol, asset_class, strat_name, last_close)
   a.Mutex.Lock()
 }
 
-func (a *Asset) close(order_type string, strat_name string) {
-  trigger_time := time.Now().UTC()
-
-  if _, ok := a.Positions[strat_name]; !ok {
-    return
-  }
-
-  pos := a.Positions[strat_name]
-  pos.Rwm.Lock()
-
-  if pos.CloseOrderPending || pos.OpenOrderPending {
-    log.Println("[ INFO ]\tClose cancelled due to order pending", a.Symbol)
-    pos.Rwm.Unlock()
-    return
-  }
-
+func (a *Asset) closeUpdatePosition(pos *Position, trigger_time time.Time, order_type string) (string, string, decimal.Decimal, string) {
   open_side := pos.OpenSide
   symbol := pos.Symbol
   qty := pos.Qty
@@ -393,17 +367,17 @@ func (a *Asset) close(order_type string, strat_name string) {
   pos.CloseTriggerPrice = a.C[constant.WINDOW_SIZE-1]
   pos.ClosePriceTime = a.Time
   pos.ClosePriceReceivedTime = a.ReceivedTime
-  pos.Rwm.Unlock()
+  return open_side, symbol, qty, position_id
+}
 
+func (a *Asset) closeLoop(strat_name string, open_side string, order_type string, position_id string, symbol string, qty decimal.Decimal) {
   backoff_sec := 1
   retries := 0
-
   for {
     status, err := a.sendCloseOrder(open_side, order_type, position_id, symbol, qty)
     if err != nil {
       util.Error(err, "Symbol", symbol, "Strat", strat_name)
     }
-
     switch status {
     case 422:
       log.Println("[ CANCEL ]\t" + a.Symbol + "\tStatus:", status)
@@ -411,29 +385,46 @@ func (a *Asset) close(order_type string, strat_name string) {
     case 403:
       // TODO: Make sure this is actually a wash trade by checking response, and not
       // insufficient funds, qty etc.
-      util.Info("Wash trade block on Close", "Retrying in (seconds)", backoff_sec)
+      log.Printf("%s\tWash trade block on Close\tRetrying in (%d) seconds ...", symbol, backoff_sec)
       util.BackoffWithMax(&backoff_sec, 20)
       retries++
     case 200:
-      if retries > 0 {
+      if retries == 1 {
+        log.Printf("[ INFO ]\tClose successful on retry")
+      } else if retries > 1 {
         util.Info("Close successful after retries", "Symbol", symbol, "Strat", strat_name, "Retries", retries)
         NNP.NoNewPositionsFalse("Close")
       }
       return
     default:
-      NNP.NoNewPositionsTrue("Close")
       util.Error(errors.New("Sending close order failed"),
         "Symbol", symbol, "Status", status, "Retrying in (seconds)", backoff_sec,
       )
       util.BackoffWithMax(&backoff_sec, 20)
       retries++
     }
-
     if retries > 1 {
       NNP.NoNewPositionsTrue("Close")
       util.Error(errors.New("Close failed on retry"), "Symbol", symbol, "Strat", strat_name, "Retries", retries)
     }
   }
+}
+
+func (a *Asset) close(order_type string, strat_name string) {
+  trigger_time := time.Now().UTC()
+  if _, ok := a.Positions[strat_name]; !ok {
+    return
+  }
+  pos := a.Positions[strat_name]
+  pos.Rwm.Lock()
+  if pos.CloseOrderPending || pos.OpenOrderPending {
+    log.Println("[ INFO ]\tClose cancelled due to order pending", a.Symbol)
+    pos.Rwm.Unlock()
+    return
+  }
+  open_side, symbol, qty, position_id := a.closeUpdatePosition(pos, trigger_time, order_type)
+  pos.Rwm.Unlock()
+  a.closeLoop(strat_name, open_side, order_type, position_id, symbol, qty)
 }
 
 func (a *Asset) stopLoss(percent float64, strat_name string) {
@@ -443,12 +434,10 @@ func (a *Asset) stopLoss(percent float64, strat_name string) {
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
-
   fill_price := a.Positions[strat_name].OpenFilledAvgPrice
   if fill_price == 0 {
     return
   }
-
   dev := (fill_price / a.C[a.i(0)] - 1) * 100
   if dev < (percent * -1) {
     a.close("IOC", strat_name)
@@ -463,12 +452,10 @@ func (a *Asset) takeProfit(percent float64, strat_name string) {
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
-
   fill_price := a.Positions[strat_name].OpenFilledAvgPrice
   if fill_price == 0 {
     return
   }
-
   dev := (fill_price / a.C[a.i(0)] - 1) * 100
   if dev > percent {
     a.close("IOC", strat_name)
