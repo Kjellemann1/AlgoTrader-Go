@@ -5,3 +5,6 @@ linters:
     - ineffassign
     - gosimple
     - gocyclo
+
+  disable:
+    - unused

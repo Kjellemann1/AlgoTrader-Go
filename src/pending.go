@@ -52,10 +52,12 @@ func (co *ClosedOrder) getFloat(element string) *float64 {
   if byte == nil {
     return nil
   }
+
   float, err := strconv.ParseFloat(string(byte), 64)
   if err != nil {
     util.Warning(errors.New("failed to convert filled_avg_price to float in order update"))
   }
+
   return &float
 }
 
@@ -64,6 +66,7 @@ func (co *ClosedOrder) getFilledQty() *decimal.Decimal {
   if byte == nil {
     return nil
   }
+
   dec, err := decimal.NewFromString(string(byte))
   if err != nil {
     NNP.NoNewPositionsTrue("")
@@ -71,6 +74,7 @@ func (co *ClosedOrder) getFilledQty() *decimal.Decimal {
     request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
+
   return &dec
 }
 
@@ -79,10 +83,12 @@ func (co *ClosedOrder) getFillTime() *time.Time {
   if fill_time == nil {
     return nil
   }
+
   fill_time_t, err := time.Parse(time.RFC3339, string(fill_time))
   if err != nil {
     util.Warning(errors.New("failed to convert fill_time to time.Time in update"))
   }
+
   return &fill_time_t
 }
 
@@ -105,12 +111,14 @@ func (a *Account) parseClosedOrders(relevant map[string][]*fastjson.Value) map[s
       parsed[symbol] = append(parsed[symbol], co.parse())
     }
   }
+
   return parsed
 }
 
 func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string) {
   backoff_sec := 1
   retries := 0
+
   for {
     status, err := request.CloseGTC("sell", symbol, "strat[reconnect_mutliple_diff]", diff)
     if err != nil {
@@ -241,6 +249,7 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
       for _, pos := range v {
         position_id := m.GetStringBytes("client_order_id")  // client_order_id == PositionID
         symbol := m.GetStringBytes("symbol")
+
         if position_id == nil {
           util.Warning(errors.New("PositionID not found"), nil)
           continue
@@ -248,6 +257,7 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
           util.Warning(errors.New("symbol not found"), nil)
           continue
         }
+
         if string(position_id) == pos.PositionID {
           relevant[string(symbol)] = append(relevant[string(symbol)], m)
           break
@@ -255,6 +265,7 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
       }
     }
   }
+
   return relevant
 }
 

@@ -9,6 +9,8 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
 
+var httpClient = &http.Client{}
+
 func push(message string, title string, prio int) {
   url := "https://api.pushover.net/1/messages.json"
   var payload string
@@ -31,7 +33,7 @@ func push(message string, title string, prio int) {
       `"priority": ` + fmt.Sprint(prio) +
     `}`
   }
-  response, err := http.Post(url, "application/json", bytes.NewBuffer([]byte(payload)))
+  response, err := httpClient.Post(url, "application/json", bytes.NewBuffer([]byte(payload)))
   if err != nil {
     log.Printf(
       "[ WARNING ]\tError making POST request\n  -> Error: %s\n  -> Response: %s\n Payload: %s", err, response.Status, payload)
@@ -58,4 +60,19 @@ func Warning(message string) {
 
 func Error(message string) {
   push(message, "ERROR", 0)  // Change to 2
+}
+
+// Everything below this line is for testing purposes
+func DisablePush() {
+  httpClient = &http.Client{
+    Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+      return &http.Response{ StatusCode: 200 }, nil
+    }),
+  }
+}
+
+type roundTripFunc func(req *http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+  return f(req)
 }

@@ -331,7 +331,9 @@ func (a *Account) getFillTime(pm *fastjson.Value) *time.Time {
   }
 
   fill_time_t, err := time.Parse(time.RFC3339, string(fill_time))
-  if err != nil { util.Warning(errors.New("Failed to convert fill_time to time.Time in update")) }
+  if err != nil {
+    util.Warning(errors.New("Failed to convert fill_time to time.Time"))
+  }
 
   return &fill_time_t
 }
@@ -344,7 +346,7 @@ func (a *Account) getFilledAvgPrice(pm *fastjson.Value) *float64 {
 
   filled_avg_price_float, err := strconv.ParseFloat(string(filled_avg_price), 64)
   if err != nil {
-    util.Warning(errors.New("Failed to convert filled_avg_price to float in order update"))
+    util.Warning(errors.New("Failed to convert filled_avg_price to float"))
   }
 
   return &filled_avg_price_float

@@ -14,7 +14,7 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
 
-var httpClient = &http.Client{
+var HttpClient = &http.Client{
   Timeout: constant.HTTP_TIMEOUT_SEC,
   Transport: &http.Transport{
     MaxIdleConns: 100,
@@ -30,7 +30,7 @@ func GetReq(url string) ([]byte, error) {
     return nil, err
   }
   req.Header = constant.AUTH_HEADERS
-  resp, err := http.DefaultClient.Do(req)
+  resp, err := HttpClient.Do(req)
   if err != nil {
     return nil, err
   }
@@ -75,7 +75,7 @@ func SendOrder(payload string) (int, error) {
     return 0, err
   }
   request.Header = constant.AUTH_HEADERS
-  response, err := httpClient.Do(request)
+  response, err := HttpClient.Do(request)
   if err != nil {
     return response.StatusCode, err
   }
@@ -96,8 +96,11 @@ func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
   return qty
 }
 
+// TODO: Make test
 func GetPositions(backoff_sec int, retries int) (arr []*fastjson.Value, err error) {
-  if retries >= 4 {
+  log.Println("retries", retries)
+  if retries >= constant.GET_POSITIONS_RETRIES {
+    print("here")
     return nil, errors.New("Max retries reached. Failed to get positions.")
   }
   body, err := GetReq(constant.ENDPOINT + "/positions")
@@ -109,6 +112,7 @@ func GetPositions(backoff_sec int, retries int) (arr []*fastjson.Value, err erro
   } else {
     arr, err = parseBody(body)
   }
+  // log.Println("error", err.Error())
   if err != nil {
     return nil, err
   }
@@ -176,9 +180,11 @@ func CloseGTC(side string, symbol string, order_id string, qty decimal.Decimal) 
 
 func CloseAllPositions(backoff_sec int, retries int) {
   if retries >= 3 {
-    log.Printf("[FAIL]\tFailed to close all positions after %d retries\n", retries)
+    // TODO: Check if this could be a push message
+    log.Printf("[ FAIL ]\tFailed to close all positions after %d retries\n", retries)
     return
   }
+
   // cancel_orders=true will cancel all open orders before liquidating
   url := "https://paper-api.alpaca.markets/v2/positions?cancel_orders=true"
   req, err := http.NewRequest("DELETE", url, nil)
@@ -189,37 +195,42 @@ func CloseAllPositions(backoff_sec int, retries int) {
     CloseAllPositions(backoff_sec, retries)
   }
   req.Header = constant.AUTH_HEADERS
-  response, err := http.DefaultClient.Do(req)
+
+  response, err := HttpClient.Do(req)
   if err != nil {
     util.Error(err, "Response", response)
     util.BackoffWithMax(&backoff_sec, 4)
     retries++
     CloseAllPositions(backoff_sec, retries)
   }
+
   log.Printf("[ OK ]\tSent order to close all positions\n")
 }
 
 func urlGetClosedOrders(symbols map[string]map[string]int) (url string) {
   var symbols_str string
+
   ls := make([]string, 0)
   if len(symbols["stock"]) > 0 {
     for k := range symbols["stock"] {
       ls = append(ls, k)
     }
+    symbols_str += strings.Join(ls, "%2C")
+  }
+
+  ls = make([]string, 0)
+  if len(symbols_str) > 0 && len(symbols["crypto"]) > 0 {
+    symbols_str += "%2C"
+    for k := range symbols["crypto"] {
+        ls = append(ls, k)
+    }
     symbols_str += strings.Replace(strings.Join(ls, "%2C"), "/", "%2F", len(symbols["crypto"]))
   }
-  ls = make([]string, 0)
-  if len(symbols_str) > 0 {
-    for k := range symbols["crypto"] {
-      ls = append(ls, k)
-    }
-    symbols_str += "%2C"
-  }
-  symbols_str += strings.Join(ls, "%2C")
+
   // A better solution than just taking the last 500 orders could be to only take the
   // ones since the time of the last executed trade from the database.
   url = fmt.Sprintf(
-    "%s/orders?status=closed&limit=500&direction=desc&symbols=%s",
+    "%s/orders?status=closed&limit=500&direction=desc&symbols=%s",  // Max limit is 500
     constant.ENDPOINT, symbols_str,
   )
   return
@@ -256,6 +267,7 @@ func GetClosedOrders(symbols map[string]map[string]int, backoff_sec int, retries
   return parsed, nil
 }
 
+// TODO: Make test
 func GetAssetQtys() (qtys map[string]decimal.Decimal, err error) {
   apos, err := GetPositions(5, 0)
   if err != nil {

@@ -23,7 +23,7 @@ func newAssetTesting() (a *Asset) {
 func TestIndexingMethods(t *testing.T) {
   a := newAssetTesting()
   pos := 0
-  for i := 0; i < constant.WINDOW_SIZE; i++ {
+  for i := range constant.WINDOW_SIZE {
     a.C[i] = float64(i)
   }
 
@@ -37,7 +37,7 @@ func TestIndexingMethods(t *testing.T) {
     to := 11
     arr := a.s(&a.C, from, to)
     assert.Equal(t, 10, len(arr))
-    for i := 0; i < len(arr); i++ {
+    for i := range len(arr) {
       assert.Equal(t, a.C[len(a.C) - 1 - i - from], arr[len(arr) - 1 - i])
     }
   })
@@ -53,7 +53,7 @@ func TestWindowUpdate(t *testing.T) {
       x--
     }
     a := newAssetTesting()
-    for i := 0; i < test_size; i++ {
+    for i := range test_size {
       j := float64(i)
       a.updateWindowOnBar(j, j, j, j, time.Now(), time.Now())
     }
@@ -85,7 +85,7 @@ func TestFillMissingMinutes(t *testing.T) {
     baseArray[i] = float64(i)
   }
 
-	t.Run("Different day for stock", func(t *testing.T) {
+  t.Run("Different day for stock", func(t *testing.T) {
     b := make([]float64, constant.WINDOW_SIZE)
     copy(b, baseArray)
     a, _ := reprint.This(asset).(*Asset)
@@ -99,7 +99,7 @@ func TestFillMissingMinutes(t *testing.T) {
 		assert.Equal(t, b, a.L)
 	})
 
-  for i := 0; i < 3; i++ {
+  for range 3 {
     rollFloat(&baseArray, asset.C[constant.WINDOW_SIZE-1])
   }
 

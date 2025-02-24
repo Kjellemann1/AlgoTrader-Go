@@ -76,6 +76,7 @@ func (db *Database) prepQueries() error {
   if err != nil {
     return err
   }
+
   db.insert_position, err = db.conn.Prepare(`
     INSERT INTO positions (
       position_id,
@@ -99,24 +100,28 @@ func (db *Database) prepQueries() error {
   if err != nil {
     return err
   }
+
   db.delete_position, err = db.conn.Prepare(`
     DELETE FROM positions WHERE symbol = ? AND strat_name = ?;
   `)
   if err != nil {
     return err
   }
+
   db.update_trailing_stop, err = db.conn.Prepare(`
     UPDATE positions SET trailing_stop = ? WHERE symbol = ? AND strat_name = ?;
   `)
   if err != nil {
     return err
   }
+
   db.update_n_close_orders, err = db.conn.Prepare(`
     UPDATE positions SET n_close_orders = ? WHERE symbol = ? AND strat_name = ?;
   `)
   if err != nil {
     return err
   }
+
   return nil
 }
 
@@ -288,70 +293,41 @@ func (db *Database) updateNCloseOrders(query *Query, backoff_sec int, retries in
   }
 }
 
-func (db *Database) retrievePositions() {
-  response, err := db.conn.Query("SELECT * FROM positions;")
-  if err != nil {
-    util.Error(err, "retrievePositions")
-  }
-  defer response.Close()
-  for response.Next() {
-    var positionID, symbol, assetClass, side, stratName, orderType string
-    var qty, triggerPrice, filledAvgPrice, trailingStop float64
-    var priceTime, receivedTime, triggerTime, fillTime time.Time
-    var badForAnalysis bool
-    var nCloseOrders int8
-    err = response.Scan(
-      &positionID,
-      &symbol,
-      &assetClass,
-      &side,
-      &stratName,
-      &orderType,
-      &qty,
-      &priceTime,
-      &receivedTime,
-      &triggerTime,
-      &triggerPrice,
-      &fillTime,
-      &filledAvgPrice,
-      &trailingStop,
-      &badForAnalysis,
-      &nCloseOrders,
-    )
-    if err != nil {
-      util.Error(err, "retrievePositions")
-    }
-    fmt.Println(positionID, symbol, assetClass, side, stratName, orderType, qty, priceTime, receivedTime, triggerTime, triggerPrice, fillTime, filledAvgPrice, trailingStop, badForAnalysis, nCloseOrders)
-  }
-}
-
 func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
+  // I am fairly certain the reason for fill_time being nil is
+  // that closed orders where not filled. But I added one for open orders
+  // as well to see if it happens there too.
   switch query.Action {
     case "open":
       if query.FillTime.IsZero() {
+        util.Info("Inserting Open with fill_time == nil", "Query", query)
         db.insertTradeFillTimeNil(query, backoff_sec, retries)
         db.insertPositionFillTimeNil(query, backoff_sec, retries)
       } else {
         db.insertTrade(query, backoff_sec, retries)
         db.insertPosition(query, backoff_sec, retries)
       }
+
     case "close":
       if query.FillTime.IsZero() {
+        util.Info("Inserting Close with fill_time == nil", "Query", query)
         db.insertTradeFillTimeNil(query, backoff_sec, retries)
       } else {
         db.insertTrade(query, backoff_sec, retries)
       }
+      
       if !query.Qty.IsZero() {
         db.updateNCloseOrders(query, backoff_sec, retries)
       } else {
         db.deletePosition(query, backoff_sec, retries)
       }
+
     case "update":
       db.updateTrailingStop(query, backoff_sec, retries)
+
     case "delete_all_positions":
       db.deleteAllPositions(backoff_sec, retries)
-    case "retrieve_positions":
-      db.retrievePositions()
+
     default:
       util.Error(errors.New("Invalid query type"), "Query", query)
   }
@@ -359,12 +335,14 @@ func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
 
 func (db *Database) listen() {
   log.Println("[ OK ]\tDatabase listening")
+
   for {
     query := <-db.db_chan
     if query == nil {
       db.conn.Close()
       return
     }
+
     db.queryHandler(query, 5, 0)
   }
 }
@@ -393,11 +371,13 @@ func (db *Database) Start(wg *sync.WaitGroup, assets map[string]map[string]*Asse
 func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
   globRwm.Lock()
   defer globRwm.Unlock()
+
   response, err := db.conn.Query("SELECT * FROM positions;")
   if err != nil {
     util.ErrorPanic(err)
   }
   defer response.Close()
+
   for response.Next() {
     var (
       positionID, symbol, assetClass, side, stratName, orderType string
@@ -407,6 +387,7 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       badForAnalysis bool
       nCloseOrders int8
     )
+
     // TODO: Write test to assure the order of the columns in the query is correct
     err = response.Scan(
       &symbol,
@@ -431,6 +412,7 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       request.CloseAllPositions(2, 0)
       log.Panicln("SHUTTING DOWN")
     }
+
     assets[assetClass][symbol].Positions[stratName] = &Position{
       Symbol: symbol,
       AssetClass: assetClass,
@@ -450,8 +432,10 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       CloseOrderPending: false,
       NCloseOrders: nCloseOrders,
     }
+
     assets[assetClass][symbol].Qty = assets[assetClass][symbol].Qty.Add(qty)
     log.Printf("[ INFO ]\tRetrieved position: %s %s %s", symbol, stratName, qty.String())
   }
+
   log.Println("[ OK ]\tState retrieved from database")
 }

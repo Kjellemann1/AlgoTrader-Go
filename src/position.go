@@ -47,19 +47,19 @@ type Position struct {
 
 func NewPosition(symbol string) *Position {
   zero, _ := decimal.NewFromString("0")
-  p := &Position{
+
+  return &Position{
     BadForAnalysis: false,
     OpenOrderPending: true,
     CloseOrderPending: false,
     Qty: zero,
   }
-  return p
 }
 
 func (p *Position) LogOpen() *Query {
   log.Println("OPEN >>\t" + util.AddWhitespace(p.Symbol, 10) + "\t" + p.StratName)
 
-  query := &Query{
+  return &Query{
     Action: "open",
     PositionID: p.PositionID,
     Symbol: p.Symbol,
@@ -76,8 +76,6 @@ func (p *Position) LogOpen() *Query {
     FilledAvgPrice: p.OpenFilledAvgPrice,
     BadForAnalysis: p.BadForAnalysis,
   }
-
-  return query
 }
 
 func (p *Position) LogClose() *Query {
@@ -92,7 +90,7 @@ func (p *Position) LogClose() *Query {
 
   p.NCloseOrders++
 
-  query := &Query{
+  return &Query{
     Action: "close",
     PositionID: p.PositionID,
     Symbol: p.Symbol,
@@ -110,6 +108,4 @@ func (p *Position) LogClose() *Query {
     BadForAnalysis: p.BadForAnalysis,
     NCloseOrders: p.NCloseOrders,
   }
-
-  return query
 }
