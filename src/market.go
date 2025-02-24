@@ -182,7 +182,9 @@ func (m *Market) subscribe() (err error) {
   if m.asset_class == "crypto" {
     sub_msg_symbols = strings.Join(constant.CRYPTO_LIST, "\",\"")
   }
-  sub_msg := fmt.Appendf(make([]byte, 0), `{"action":"subscribe", "trades":["%s"], "bars":["%s"]}`, sub_msg_symbols, sub_msg_symbols)
+  sub_msg := fmt.Appendf(make([]byte, 0), `{"action":"subscribe", "trades":["%s"], "bars":["%s"]}`, 
+    sub_msg_symbols, sub_msg_symbols, 
+  )
   if err = m.conn.WriteMessage(websocket.TextMessage, sub_msg); err != nil {
     return
   }
@@ -201,7 +203,6 @@ func (m *Market) PingPong(ctx context.Context) {
   if err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
     util.Warning(err)
   }
-
   m.conn.SetPongHandler(func(string) error {
     err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC))
     if err != nil {
@@ -209,11 +210,9 @@ func (m *Market) PingPong(ctx context.Context) {
     }
     return nil
   })
-
   ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
   log.Printf("[ OK ]\tPingPong initiated for %s market websocket\n", m.asset_class)
-
   for {
     select {
     case <-ctx.Done():

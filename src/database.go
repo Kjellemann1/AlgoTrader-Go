@@ -164,6 +164,29 @@ func (db *Database) errorHandler(
   NNP.NoNewPositionsFalse("Database")
 }
 
+func (db *Database) insertTradeFillTimeNil(query *Query, backoff_sec int, retries int) {
+  response, err := db.insert_trade.Exec(
+    query.Action,
+    query.PositionID,
+    query.Symbol,
+    query.AssetClass,
+    query.Side,
+    query.StratName,
+    query.OrderType,
+    query.Qty, 
+    query.PriceTime,
+    query.ReceivedTime,
+    query.TriggerTime,
+    query.TriggerPrice,
+    query.FilledAvgPrice,
+    query.BadForAnalysis,
+    query.NCloseOrders,
+  )
+  if err != nil {
+    db.errorHandler(err, "insertTrade", response, query, retries, &backoff_sec)
+  }
+}
+
 func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
   response, err := db.insert_trade.Exec(
     query.Action,
@@ -185,6 +208,29 @@ func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
   )
   if err != nil {
     db.errorHandler(err, "insertTrade", response, query, retries, &backoff_sec)
+  }
+}
+
+func (db *Database) insertPositionFillTimeNil(query *Query, backoff_sec int, retries int) {
+  response, err := db.insert_position.Exec(
+    query.PositionID,
+    query.Symbol,
+    query.AssetClass,
+    query.Side,
+    query.StratName,
+    query.OrderType,
+    query.Qty,
+    query.PriceTime,
+    query.ReceivedTime,
+    query.TriggerTime,
+    query.TriggerPrice,
+    query.FilledAvgPrice,
+    query.TrailingStop,
+    query.BadForAnalysis,
+    query.NCloseOrders,
+  )
+  if err != nil {
+    db.errorHandler(err, "insertPosition", response, query, retries, &backoff_sec)
   }
 }
 
@@ -282,10 +328,19 @@ func (db *Database) retrievePositions() {
 func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
   switch query.Action {
     case "open":
-      db.insertTrade(query, backoff_sec, retries)
-      db.insertPosition(query, backoff_sec, retries)
+      if query.FillTime.IsZero() {
+        db.insertTradeFillTimeNil(query, backoff_sec, retries)
+        db.insertPositionFillTimeNil(query, backoff_sec, retries)
+      } else {
+        db.insertTrade(query, backoff_sec, retries)
+        db.insertPosition(query, backoff_sec, retries)
+      }
     case "close":
-      db.insertTrade(query, backoff_sec, retries)
+      if query.FillTime.IsZero() {
+        db.insertTradeFillTimeNil(query, backoff_sec, retries)
+      } else {
+        db.insertTrade(query, backoff_sec, retries)
+      }
       if !query.Qty.IsZero() {
         db.updateNCloseOrders(query, backoff_sec, retries)
       } else {

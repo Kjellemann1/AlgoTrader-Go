@@ -1,0 +1,7 @@
+linters:
+  enable:
+    - prealloc
+    - govet
+    - ineffassign
+    - gosimple
+    - gocyclo

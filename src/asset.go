@@ -272,7 +272,8 @@ func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, sy
   return 0, nil
 }
 
-// Methods below this point are for being called from strategy functions
+//////////////////////// Methods below this point are for being called from strategy functions
+
 func (a *Asset) i(num int) (index int) {
 	index = constant.WINDOW_SIZE - 1 - num
 	return
@@ -288,11 +289,15 @@ func (a *Asset) openChecks(strat_name string, trigger_time time.Time) bool {
     return false
   }
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
-    log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tReceived time diff")
+    log.Printf("[ CANCEL ]\t%s\t%s\tReceived time diff",
+      util.AddWhitespace(a.Symbol, 10), strat_name,
+    )
     return false
   } 
   if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF_MS {
-    log.Println("[ CANCEL ]\t" +  util.AddWhitespace(a.Symbol, 10) + "\tTrigger time diff")
+    log.Printf("[ CANCEL ]\t%s\t%s\tTrigger time diff",
+      util.AddWhitespace(a.Symbol, 10), strat_name,
+    )
     return false
   }
   if NNP.Flag {
@@ -301,7 +306,7 @@ func (a *Asset) openChecks(strat_name string, trigger_time time.Time) bool {
   return true
 }
 
-func (a *Asset) openLoop(order_type string, position_id string, symbol string, asset_class string, strat_name string, last_close float64) {
+func (a *Asset) sendOpen(order_type string, position_id string, symbol string, asset_class string, strat_name string, last_close float64) {
   backoff_sec := 1
   retries := 0
   for {
@@ -319,11 +324,15 @@ func (a *Asset) openLoop(order_type string, position_id string, symbol string, a
     switch status {
     case 200:
       if retries > 0 {
-        log.Printf("[ INFO ]\t%s\t%s\tOpen successful on retry\n", util.AddWhitespace(symbol, 10), strat_name)
+        log.Printf("[ INFO ]\t%s\t%s\tOpen successful on retry\n",
+          util.AddWhitespace(symbol, 10), strat_name,
+        )
       }
       return
     case 403:
-      log.Printf("[ INFO ]\t%s\tWash trade block on Open\tRetrying in (%d) seconds ...", util.AddWhitespace(symbol, 10), backoff_sec)
+      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Open\tRetrying in (%d) seconds ...",
+        util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
+      )
       util.Backoff(&backoff_sec)
       retries++
     }
@@ -341,7 +350,7 @@ func (a *Asset) open(side string, order_type string, strat_name string) {
   position_id := a.createPositionID(strat_name)
   a.Mutex.Unlock()
   a.initiatePositionObject(strat_name, order_type, side, position_id, trigger_time)
-  a.openLoop(order_type, position_id, symbol, asset_class, strat_name, last_close)
+  a.sendOpen(order_type, position_id, symbol, asset_class, strat_name, last_close)
   a.Mutex.Lock()
 }
 
@@ -359,7 +368,7 @@ func (a *Asset) closeUpdatePosition(pos *Position, trigger_time time.Time, order
   return open_side, symbol, qty, position_id
 }
 
-func (a *Asset) closeLoop(strat_name string, open_side string, order_type string, position_id string, symbol string, qty decimal.Decimal) {
+func (a *Asset) sendClose(strat_name string, open_side string, order_type string, position_id string, symbol string, qty decimal.Decimal) {
   backoff_sec := 1
   retries := 0
   for {
@@ -374,14 +383,20 @@ func (a *Asset) closeLoop(strat_name string, open_side string, order_type string
     case 403:
       // TODO: Make sure this is actually a wash trade by checking response, and not
       // insufficient funds, qty etc.
-      log.Printf("[ INFO ]\t%s\tWash trade block on Close\tRetrying in (%d) seconds ...", util.AddWhitespace(symbol, 10), backoff_sec)
+      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Close\tRetrying in (%d) seconds ...",
+        util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
+      )
       util.BackoffWithMax(&backoff_sec, 20)
       retries++
     case 200:
       if retries == 1 {
-        log.Printf("[ INFO ]\t%s\t%s\tClose successful on retry", util.AddWhitespace(symbol, 10), strat_name)
+        log.Printf("[ INFO ]\t%s\t%s\tClose successful on retry", 
+          util.AddWhitespace(symbol, 10), strat_name,
+        )
       } else if retries > 1 {
-        util.Info("Close successful after retries", "Symbol", symbol, "Strat", strat_name, "Retries", retries)
+        util.Info("Close successful after retries",
+          "Symbol", symbol, "Strat", strat_name, "Retries", retries,
+        )
         NNP.NoNewPositionsFalse("Close")
       }
       return
@@ -394,7 +409,9 @@ func (a *Asset) closeLoop(strat_name string, open_side string, order_type string
     }
     if retries > 1 {
       NNP.NoNewPositionsTrue("Close")
-      util.Error(errors.New("Close failed on retry"), "Symbol", symbol, "Strat", strat_name, "Retries", retries)
+      util.Error(errors.New("Close failed on retry"),
+        "Symbol", symbol, "Strat", strat_name, "Retries", retries,
+      )
     }
   }
 }
@@ -413,7 +430,7 @@ func (a *Asset) close(order_type string, strat_name string) {
   }
   open_side, symbol, qty, position_id := a.closeUpdatePosition(pos, trigger_time, order_type)
   pos.Rwm.Unlock()
-  a.closeLoop(strat_name, open_side, order_type, position_id, symbol, qty)
+  a.sendClose(strat_name, open_side, order_type, position_id, symbol, qty)
 }
 
 func (a *Asset) stopLoss(percent float64, strat_name string) {
