@@ -22,28 +22,6 @@ func init() {
   push.DisablePush()
 }
 
-var foo = func() {
-  panic("Ya Mama (push the tempo)")
-}
-
-func fooTest() {
-
-}
-
-func TestFoo(t *testing.T) {
-  temp := foo
-  defer func() { foo = temp }()
-
-  assert.Panics(t, func() { foo() }, "The code did not panic")
-  foo = fooTest
-  assert.NotPanics(t, func() { foo() }, "The code did panic")
-}
-
-func TestFoo2(t *testing.T) {
-  assert.Panics(t, func() { foo() }, "The code did not panic")
-}
-
-
 func TestCheckPending(t *testing.T) {
   a := &Account{}
   orders := map[string][]*fastjson.Value{}

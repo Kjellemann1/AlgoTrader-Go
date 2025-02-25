@@ -1,6 +1,6 @@
 package main
 
-import (
+import ( 
   "os"
   "log"
   "fmt"
@@ -53,10 +53,10 @@ func shutdownHandler(marketCancel context.CancelFunc, accountCancel context.Canc
     switch input {
     case "1":
       NNP.NoNewPositionsFalse("Run")
-      log.Println("Shutdown aborted. Resuming...")
+      log.Println("Shutdown aborted. Resuming ...")
       continue
     case "2":
-      log.Println("Saving state and shutting down...")
+      log.Println("Saving state and shutting down ...")
       marketCancel()
       stallIfOrdersPending(assets)
       accountCancel()

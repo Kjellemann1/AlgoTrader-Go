@@ -36,12 +36,14 @@ type Query struct {
 }
 
 type Database struct {
-  conn                  *sql.DB
-  db_chan               chan *Query
-  insert_trade          *sql.Stmt
-  insert_position       *sql.Stmt
-  delete_position       *sql.Stmt
-  update_trailing_stop  *sql.Stmt
+  conn *sql.DB
+  db_chan chan *Query
+  insert_trade *sql.Stmt
+  insert_trade_fill_time_nil *sql.Stmt
+  insert_position *sql.Stmt
+  insert_position_fill_time_nil *sql.Stmt
+  delete_position *sql.Stmt
+  update_trailing_stop *sql.Stmt
   update_n_close_orders *sql.Stmt
 }
 
@@ -77,6 +79,29 @@ func (db *Database) prepQueries() error {
     return err
   }
 
+  db.insert_trade_fill_time_nil, err = db.conn.Prepare(`
+    INSERT INTO trades (
+      action,
+      position_id,
+      symbol,
+      asset_class,
+      side, 
+      strat_name,
+      order_type,
+      qty,
+      price_time,
+      received_time,
+      trigger_time,
+      trigger_price,
+      filled_avg_price,
+      bad_for_analysis,
+      n_close_orders
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  `)
+  if err != nil {
+    return err
+  }
+
   db.insert_position, err = db.conn.Prepare(`
     INSERT INTO positions (
       position_id,
@@ -96,6 +121,29 @@ func (db *Database) prepQueries() error {
       bad_for_analysis,
       n_close_orders
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  `)
+  if err != nil {
+    return err
+  }
+
+  db.insert_position_fill_time_nil, err = db.conn.Prepare(`
+    INSERT INTO positions (
+      position_id,
+      symbol,
+      asset_class,
+      side,
+      strat_name,
+      order_type,
+      qty,
+      price_time,
+      received_time,
+      trigger_time,
+      trigger_price,
+      filled_avg_price,
+      trailing_stop,
+      bad_for_analysis,
+      n_close_orders
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
   `)
   if err != nil {
     return err
@@ -170,7 +218,7 @@ func (db *Database) errorHandler(
 }
 
 func (db *Database) insertTradeFillTimeNil(query *Query, backoff_sec int, retries int) {
-  response, err := db.insert_trade.Exec(
+  response, err := db.insert_trade_fill_time_nil.Exec(
     query.Action,
     query.PositionID,
     query.Symbol,
@@ -217,7 +265,7 @@ func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
 }
 
 func (db *Database) insertPositionFillTimeNil(query *Query, backoff_sec int, retries int) {
-  response, err := db.insert_position.Exec(
+  response, err := db.insert_position_fill_time_nil.Exec(
     query.PositionID,
     query.Symbol,
     query.AssetClass,
