@@ -20,7 +20,7 @@ func stallIfOrdersPending(assets map[string]map[string]*Asset) {
     if len(pending) == 0 {
       return
     } else if retries > 10 {
-      log.Printf("[ WARNING ]\tTimeout (30 seconds) waiting for pending orders. Shutting down ...\n")
+      log.Printf("[ WARNING ]\tTimeout reached waiting for pending orders: 30 seconds\t  -> Shutting down ...\n")
       return
     } else {
       retries++

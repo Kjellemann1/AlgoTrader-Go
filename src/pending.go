@@ -173,6 +173,7 @@ func (a *Account) diffPositive(diff decimal.Decimal, asset_class string, parsed 
   pos.OpenFilledAvgPrice = *pco.FilledAvgPrice
   pos.OpenFillTime = *pco.FillTime
   pos.OpenOrderPending = false
+  a.db_chan <-pos.LogOpen()
 }
 
 func (a *Account) diffNegative(diff decimal.Decimal, asset_class string, parsed []*ParsedClosedOrder) {
@@ -180,11 +181,13 @@ func (a *Account) diffNegative(diff decimal.Decimal, asset_class string, parsed 
   asset := a.assets[asset_class][*pco.Symbol]
   pos := asset.Positions[*pco.StratName]
   pos.BadForAnalysis = true
-  if diff.LessThan(pos.Qty) {
-    pos.Qty = diff
-    pos.NCloseOrders++
+  if !diff.Abs().Equal(pos.Qty) {
+    pos.Qty = pos.Qty.Add(diff)
     pos.CloseOrderPending = false
+    a.db_chan <-pos.LogClose()
+    asset.Mutex.Lock()
     asset.close("IOC", pos.StratName)
+    asset.Mutex.Unlock()
     return
   }
   pos.Qty = decimal.Zero
@@ -203,9 +206,11 @@ func (a *Account) diffZero(asset_class string, parsed []*ParsedClosedOrder) {
     return
   }
   pos.BadForAnalysis = true
-  pos.NCloseOrders++
   pos.CloseOrderPending = false
+  a.db_chan <-pos.LogClose()
+  asset.Mutex.Lock()
   asset.close("IOC", pos.StratName)
+  asset.Mutex.Unlock()
 }
 
 func (a *Account) updatePositions(parsed map[string][]*ParsedClosedOrder) {

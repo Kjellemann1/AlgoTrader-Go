@@ -155,26 +155,22 @@ func TestUpdatePositions(t *testing.T) {
     }}
 
     var queries []*Query
-    done := make(chan struct{})
     go func() {
-      defer close(done)
+      defer close(a.db_chan)
       for range 2 {
         queries = append(queries, <-a.db_chan)
       }
+      assert.Equal(t, 2, len(queries))
     }()
 
     a.updatePositions(parsed)
-
-    <-done
-    close(a.db_chan)
-
-    assert.Equal(t, 2, len(queries))
     assert.Equal(t, 1, len(btc.Positions))
   })
    
   t.Run("diffPositive", func(t *testing.T) {
     a := &Account{
       assets: make(map[string]map[string]*Asset),
+      db_chan: make(chan *Query),
     }
     a.assets["crypto"] = make(map[string]*Asset)
     a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
@@ -188,34 +184,169 @@ func TestUpdatePositions(t *testing.T) {
       { StratName: &strat1, Symbol: &btc.Symbol, FilledAvgPrice: &fill_price, FillTime: &time.Time{} },
     }}
 
+    var queries []*Query
+    go func() {
+      defer close(a.db_chan)
+      for range 1 {
+        queries = append(queries, <-a.db_chan)
+      }
+      assert.Equal(t, 1, len(queries))
+    }()
+
     a.updatePositions(parsed)
-    qty, _ := decimal.NewFromString("0.000573338")
-    assert.Equal(t, qty, btc.Positions[strat1].Qty)
+    pos_qty, _ := decimal.NewFromString("0.000573338")
+    assert.Equal(t, pos_qty, btc.Positions[strat1].Qty)
+    btc_qty, _ := decimal.NewFromString("0.010573338")
+    assert.Equal(t, btc_qty, btc.Qty)
   })
 
   t.Run("diffNegative", func(t *testing.T) {
-    a := &Account{
-      assets: make(map[string]map[string]*Asset),
-    }
-    a.assets["crypto"] = make(map[string]*Asset)
-    a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
-    btc := a.assets["crypto"]["BTC/USD"]
-    btc.Qty, _ = decimal.NewFromString("0.010")
+    t.Run("diff equal to position qty", func(t *testing.T) {
+      a := &Account{
+        assets: make(map[string]map[string]*Asset),
+        db_chan: make(chan *Query),
+      }
+      a.assets["crypto"] = make(map[string]*Asset)
+      a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
+      btc := a.assets["crypto"]["BTC/USD"]
+      btc.Qty, _ = decimal.NewFromString("0.020573338")
 
-    strat1 := "rand1"
-    btc.Positions[strat1] = &Position{ CloseOrderPending: true, OpenOrderPending: false, BadForAnalysis: false, NCloseOrders: 0 }
-    fill_price := 95061.6
-    parsed := map[string][]*ParsedClosedOrder{ "BTC/USD": {
-      { StratName: &strat1, Symbol: &btc.Symbol, FilledAvgPrice: &fill_price, FillTime: &time.Time{} },
-    }}
+      strat1 := "rand1"
+      pos_qty, _ := decimal.NewFromString("0.01")
+      btc.Positions[strat1] = &Position{
+        CloseOrderPending: true, OpenOrderPending: false, Qty: pos_qty,
+        BadForAnalysis: false, NCloseOrders: 0,
+      }
+      fill_price := 95061.6
+      parsed := map[string][]*ParsedClosedOrder{ "BTC/USD": {
+        { StratName: &strat1, Symbol: &btc.Symbol, FilledAvgPrice: &fill_price, FillTime: &time.Time{} },
+      }}
 
-    a.updatePositions(parsed)
-    qty, _ := decimal.NewFromString("0.000573338")
-    assert.Equal(t, qty, btc.Positions[strat1].Qty)
+      var queries []*Query
+      go func() {
+        defer close(a.db_chan)
+        for range 1 {
+          queries = append(queries, <-a.db_chan)
+        }
+        assert.Equal(t, 1, len(queries))
+      }()
+
+      a.updatePositions(parsed)
+
+      btc_qty, _ := decimal.NewFromString("0.010573338")
+      assert.Equal(t, btc_qty, btc.Qty)
+      assert.Nil(t, btc.Positions[strat1])
+    })
+
+    t.Run("diff not equal to position qty", func(t *testing.T) {
+      a := &Account{
+        assets: make(map[string]map[string]*Asset),
+        db_chan: make(chan *Query),
+      }
+      a.assets["crypto"] = make(map[string]*Asset)
+      a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
+      btc := a.assets["crypto"]["BTC/USD"]
+      btc.Qty, _ = decimal.NewFromString("0.020573338")
+
+      strat1 := "rand1"
+      pos_qty, _ := decimal.NewFromString("0.015")
+      btc.Positions[strat1] = &Position{
+        CloseOrderPending: true, OpenOrderPending: false, Qty: pos_qty,
+        BadForAnalysis: false, NCloseOrders: 0,
+      }
+      fill_price := 95061.6
+      parsed := map[string][]*ParsedClosedOrder{ "BTC/USD": {{
+        StratName: &strat1, Symbol: &btc.Symbol, 
+        FilledAvgPrice: &fill_price, FillTime: &time.Time{},
+      }}}
+
+      var queries []*Query
+      go func() {
+        defer close(a.db_chan)
+        for range 1 {
+          queries = append(queries, <-a.db_chan)
+        }
+        assert.Equal(t, 1, len(queries))
+      }()
+
+      a.updatePositions(parsed)
+
+      btc_qty, _ := decimal.NewFromString("0.010573338")
+      assert.Equal(t, btc_qty, btc.Qty)
+      pos_qty, _ = decimal.NewFromString("0.005")
+      assert.True(t, pos_qty.Equal(btc.Positions[strat1].Qty))
+    })
   })
 
   t.Run("diffZero", func(t *testing.T) {
+    t.Run("Open pending", func(t *testing.T) {
+      a := &Account{
+        assets: make(map[string]map[string]*Asset),
+        db_chan: make(chan *Query),
+      }
+      a.assets["crypto"] = make(map[string]*Asset)
+      a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
+      btc := a.assets["crypto"]["BTC/USD"]
+      btc.Qty, _ = decimal.NewFromString("0.010573338")
 
+      strat1 := "rand1"
+      pos_qty, _ := decimal.NewFromString("0.015")
+      btc.Positions[strat1] = &Position{
+        CloseOrderPending: false, OpenOrderPending: true, Qty: pos_qty,
+        BadForAnalysis: false, NCloseOrders: 0,
+      }
+      fill_price := 95061.6
+      side := "buy"
+      parsed := map[string][]*ParsedClosedOrder{ "BTC/USD": {{
+        StratName: &strat1, Symbol: &btc.Symbol, Side: &side,
+        FilledAvgPrice: &fill_price, FillTime: &time.Time{},
+      }}}
+
+      a.updatePositions(parsed)
+
+      btc_qty, _ := decimal.NewFromString("0.010573338")
+      assert.Equal(t, btc_qty, btc.Qty)
+      assert.Nil(t, btc.Positions[strat1])
+    })
+
+    t.Run("Close pending", func(t *testing.T) {
+      a := &Account{
+        assets: make(map[string]map[string]*Asset),
+        db_chan: make(chan *Query),
+      }
+      a.assets["crypto"] = make(map[string]*Asset)
+      a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
+      btc := a.assets["crypto"]["BTC/USD"]
+      btc.Qty, _ = decimal.NewFromString("0.010573338")
+
+      strat1 := "rand1"
+      pos_qty, _ := decimal.NewFromString("0.015")
+      btc.Positions[strat1] = &Position{
+        CloseOrderPending: true, OpenOrderPending: false, Qty: pos_qty,
+        BadForAnalysis: false, NCloseOrders: 0,
+      }
+      fill_price := 95061.6
+      side := "sell"
+      parsed := map[string][]*ParsedClosedOrder{ "BTC/USD": {{
+        StratName: &strat1, Symbol: &btc.Symbol, Side: &side,
+        FilledAvgPrice: &fill_price, FillTime: &time.Time{},
+      }}}
+
+      var queries []*Query
+      go func() {
+        defer close(a.db_chan)
+        for range 1 {
+          queries = append(queries, <-a.db_chan)
+        }
+        assert.Equal(t, 1, len(queries))
+      }()
+
+      a.updatePositions(parsed)
+
+      btc_qty, _ := decimal.NewFromString("0.010573338")
+      assert.Equal(t, btc_qty, btc.Qty)
+      assert.NotNil(t, (btc.Positions[strat1]))
+    })
   })
 }
 

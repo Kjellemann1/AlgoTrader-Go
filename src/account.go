@@ -418,8 +418,10 @@ func (a *Account) closeLogic(asset *Asset, pos *Position, u *OrderUpdate) {
     if pos.Qty.IsZero() {
       asset.removePosition(*u.StratName)
     } else {
+      asset.Mutex.Lock()
       pos.CloseOrderPending = false
       asset.close("IOC", *u.StratName)
+      asset.Mutex.Unlock()
     }
   }
 }
