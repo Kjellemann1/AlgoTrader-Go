@@ -13,15 +13,15 @@ import (
 
 func prepAssetsMap() map[string]map[string]*Asset {
   assets := make(map[string]map[string]*Asset)
-  if len(constant.STOCK_LIST) > 0 {
+  if len(constant.STOCK_SYMBOLS) > 0 {
     assets["stock"] = make(map[string]*Asset)
-    for _, symbol := range constant.STOCK_LIST {
+    for _, symbol := range constant.STOCK_SYMBOLS {
       assets["stock"][symbol] = newAsset("stock", symbol)
     }
   }
-  if len(constant.CRYPTO_LIST) > 0 {
+  if len(constant.CRYPTO_SYMBOLS) > 0 {
     assets["crypto"] = make(map[string]*Asset)
-    for _, symbol := range constant.CRYPTO_LIST {
+    for _, symbol := range constant.CRYPTO_SYMBOLS {
       assets["crypto"][symbol] = newAsset("crypto", symbol)
     }
   }
@@ -307,6 +307,7 @@ func (a *Asset) openChecks(strat_name string, trigger_time time.Time) bool {
 }
 
 func (a *Asset) sendOpen(order_type string, position_id string, symbol string, asset_class string, strat_name string, last_close float64) {
+  // TODO: Log retries
   backoff_sec := 1
   retries := 0
   for {
@@ -369,6 +370,7 @@ func (a *Asset) closeUpdatePosition(pos *Position, trigger_time time.Time, order
 }
 
 func (a *Asset) sendClose(strat_name string, open_side string, order_type string, position_id string, symbol string, qty decimal.Decimal) {
+  // TODD: Log retries
   backoff_sec := 1
   retries := 0
   for {
@@ -424,7 +426,7 @@ func (a *Asset) close(order_type string, strat_name string) {
   pos := a.Positions[strat_name]
   pos.Rwm.Lock()
   if pos.CloseOrderPending || pos.OpenOrderPending {
-    log.Println("[ INFO ]\tClose cancelled due to order pending", a.Symbol)
+    log.Printf("[ INFO ]\t%s\t%s\tClose cancelled due to order pending", util.AddWhitespace(a.Symbol, 10), strat_name)
     pos.Rwm.Unlock()
     return
   }
@@ -447,7 +449,7 @@ func (a *Asset) stopLoss(percent float64, strat_name string) {
   dev := (fill_price / a.C[a.i(0)] - 1) * 100
   if dev < (percent * -1) {
     a.close("IOC", strat_name)
-    log.Printf("[ INFO ]\tStopLoss\t%s\t%s", a.Symbol, strat_name)
+    log.Printf("[ INFO ]\t%s\t%s\tStopLoss", a.Symbol, strat_name)
   }
 }
 
@@ -465,7 +467,7 @@ func (a *Asset) takeProfit(percent float64, strat_name string) {
   dev := (fill_price / a.C[a.i(0)] - 1) * 100
   if dev > percent {
     a.close("IOC", strat_name)
-    log.Printf("[ INFO ]\tTakeProfit\t%s\t%s", a.Symbol, strat_name)
+    log.Printf("[ INFO ]\t%s\t%s\tTakeProfit", a.Symbol, strat_name)
   }
 }
 

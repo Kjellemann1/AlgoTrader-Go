@@ -9,7 +9,7 @@ import (
 func (a *Asset) rand() {
   a.Mutex.Lock()
 
-  prob := 20
+  prob := 5
 
   num1 := rand.Intn(100)
   num2 := rand.Intn(100)

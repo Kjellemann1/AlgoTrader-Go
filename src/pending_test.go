@@ -3,6 +3,7 @@ package main
 import (
   "io"
   "time"
+  "errors"
   "strings"
   "testing"
   "net/http"
@@ -11,7 +12,14 @@ import (
   "github.com/stretchr/testify/assert"
   "github.com/Kjellemann1/AlgoTrader-Go/request"
   "github.com/Kjellemann1/AlgoTrader-Go/push"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
+
+type roundTripFunc func(req *http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+  return f(req)
+}
 
 func init() {
   request.HttpClient = nil
@@ -19,26 +27,35 @@ func init() {
     panic("HttpClient is not nil")
   }
 
+  request.HttpClient = &http.Client{
+    Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+      return &http.Response{ StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[{"id":1}]`)) }, nil
+    }),
+  }
+
   push.DisablePush()
 }
 
-func TestCheckPending(t *testing.T) {
+func TestFilterAndParse(t *testing.T) {
   a := &Account{}
   orders := map[string][]*fastjson.Value{}
 
   t.Run("filterRelevantOrders", func(t *testing.T) {
+    globRwm.Lock()
+    defer globRwm.Unlock()
     pending := map[string][]*Position{
       "BTC/USD": {
-        {PositionID: "symbol[BTC/USD]_strat[rand2]_time[2025-02-24 17:22:00]"},
-        {PositionID: "symbol[BTC/USD]_strat[rand1]_time[2025-02-24 17:20:00]_close"},
+        {PositionID: "symbol[BTC/USD]_strat[rand2]_time[2025-02-24 17:22:00]"},  // Should be filtered out
         {PositionID: "symbol[BTC/USD]_strat[rand2]_time[2025-02-24 16:53:00]_close"},  // Should be filtered out
+        {PositionID: "symbol[BTC/USD]_strat[rand1]_time[2025-02-24 17:20:00]_close"},
       },
       "ETH/USD": {
-        {PositionID: "symbol[ETH/USD]_strat[rand2]_time[2025-02-24 16:53:00]_close"},
         {PositionID: "symbol[ETH/USD]_strat[rand2]_time[2025-02-24 17:22:00]"},  // Should be filtered out
+        {PositionID: "symbol[ETH/USD]_strat[rand2]_time[2025-02-24 16:53:00]_close"},
       },
     }
 
+    response := &http.Response{ Body: io.NopCloser(strings.NewReader(getClosedOrdersResponse)) }
     body, _ := io.ReadAll(response.Body)
     parsed, _ := fastjson.ParseBytes(body)
     arr := parsed.GetArray()
@@ -46,15 +63,16 @@ func TestCheckPending(t *testing.T) {
     orders = a.filterRelevantOrders(arr, pending)
 
     assert.Equal(t, 2, len(orders))
-    assert.Equal(t, 2, len(orders["BTC/USD"]))
+    assert.Equal(t, 1, len(orders["BTC/USD"]))
     assert.Equal(t, 1, len(orders["ETH/USD"]))
   })
 
   t.Run("parseClosedOrders", func(t *testing.T) {
+    globRwm.Lock()
     parsed := a.parseClosedOrders(orders)
 
     assert.Equal(t, 2, len(parsed))
-    assert.Equal(t, 2, len(parsed["BTC/USD"]))
+    assert.Equal(t, 1, len(parsed["BTC/USD"]))
     assert.Equal(t, 1, len(parsed["ETH/USD"]))
 
     assert.Equal(t, "ETH/USD", *parsed["ETH/USD"][0].Symbol)
@@ -66,13 +84,142 @@ func TestCheckPending(t *testing.T) {
     fill_time, _ := time.Parse(time.RFC3339, string("2025-02-24T17:20:01.054777Z"))
     assert.Equal(t, fill_time, *parsed["ETH/USD"][0].FillTime)
   })
+}
 
-  t.Run("updatePositions", func(t *testing.T) {
+func TestSendCloseGTC(t *testing.T) {
+  var iter int
+  request.HttpClient = &http.Client{
+    Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+      var ret *http.Response
+      var err error
+      if iter == 0 {
+        ret = &http.Response{ StatusCode: 403, Body: io.NopCloser(strings.NewReader(`{"message":"forbidden."}`)) }
+      } else if iter == 1 || iter == 3 {
+        ret = &http.Response{ StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[{"id":1}]`)) }
+      } else if iter == 2 {
+        ret = &http.Response{ StatusCode: 429, Body: nil }
+      } else if iter == constant.REQUEST_RETRIES + 5 {
+        ret = &http.Response{ StatusCode: 200, Body: nil }
+      } else {
+        err = errors.New("error")
+      }
+      iter++
+      return ret, err
+    }),
+  }
+
+  t.Run("Success on retry wash block status", func(t *testing.T) {
+    a := &Account{}
+    assert.NotPanics(t, func() { a.sendCloseGTC(decimal.NewFromFloat(0.1), "BTC/USD", 0) })
+  })
+
+  t.Run("Success on retry default case status", func(t *testing.T) {
+    a := &Account{}
+    assert.NotPanics(t, func() { a.sendCloseGTC(decimal.NewFromFloat(0.1), "BTC/USD", 0) })
+  })
+
+  t.Run("Fail on retry with panic", func(t *testing.T) {
+    a := &Account{}
+    assert.Panics(t, func() { a.sendCloseGTC(decimal.NewFromFloat(0.1), "BTC/USD", 0) })
+  })
+  
+}
+
+func TestUpdatePositions(t *testing.T) {
+  request.HttpClient = &http.Client{
+    Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+      response := &http.Response{ StatusCode: 200, Body: io.NopCloser(strings.NewReader(getAssetQtysResponse)) }
+      return response, nil 
+    }),
+  }
+
+  t.Run("multiple", func(t *testing.T) {
+    a := &Account{
+      db_chan: make(chan *Query),
+      assets: make(map[string]map[string]*Asset),
+    }
+    a.assets["crypto"] = make(map[string]*Asset)
+    a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD"}
+    btc := a.assets["crypto"]["BTC/USD"]
+    btc.Positions = make(map[string]*Position)
+
+    strat1 := "rand1"
+    strat2 := "rand2"
+    strat3 := "rand3"
+    btc.Positions[strat1] = &Position{ CloseOrderPending: true, OpenOrderPending: false, BadForAnalysis: false }
+    btc.Positions[strat2] = &Position{ CloseOrderPending: false, OpenOrderPending: true, BadForAnalysis: false }
+    btc.Positions[strat3] = &Position{ CloseOrderPending: false, OpenOrderPending: false, BadForAnalysis: false }
+    parsed := map[string][]*ParsedClosedOrder{ "BTC/USD": {
+      { StratName: &strat1, Symbol: &btc.Symbol },
+      { StratName: &strat2, Symbol: &btc.Symbol },
+    }}
+
+    var queries []*Query
+    done := make(chan struct{})
+    go func() {
+      defer close(done)
+      for range 2 {
+        queries = append(queries, <-a.db_chan)
+      }
+    }()
+
+    a.updatePositions(parsed)
+
+    <-done
+    close(a.db_chan)
+
+    assert.Equal(t, 2, len(queries))
+    assert.Equal(t, 1, len(btc.Positions))
+  })
+   
+  t.Run("diffPositive", func(t *testing.T) {
+    a := &Account{
+      assets: make(map[string]map[string]*Asset),
+    }
+    a.assets["crypto"] = make(map[string]*Asset)
+    a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
+    btc := a.assets["crypto"]["BTC/USD"]
+    btc.Qty, _ = decimal.NewFromString("0.010")
+
+    strat1 := "rand1"
+    btc.Positions[strat1] = &Position{ CloseOrderPending: false, OpenOrderPending: true, BadForAnalysis: false }
+    fill_price := 95061.6
+    parsed := map[string][]*ParsedClosedOrder{ "BTC/USD": {
+      { StratName: &strat1, Symbol: &btc.Symbol, FilledAvgPrice: &fill_price, FillTime: &time.Time{} },
+    }}
+
+    a.updatePositions(parsed)
+    qty, _ := decimal.NewFromString("0.000573338")
+    assert.Equal(t, qty, btc.Positions[strat1].Qty)
+  })
+
+  t.Run("diffNegative", func(t *testing.T) {
+    a := &Account{
+      assets: make(map[string]map[string]*Asset),
+    }
+    a.assets["crypto"] = make(map[string]*Asset)
+    a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
+    btc := a.assets["crypto"]["BTC/USD"]
+    btc.Qty, _ = decimal.NewFromString("0.010")
+
+    strat1 := "rand1"
+    btc.Positions[strat1] = &Position{ CloseOrderPending: true, OpenOrderPending: false, BadForAnalysis: false, NCloseOrders: 0 }
+    fill_price := 95061.6
+    parsed := map[string][]*ParsedClosedOrder{ "BTC/USD": {
+      { StratName: &strat1, Symbol: &btc.Symbol, FilledAvgPrice: &fill_price, FillTime: &time.Time{} },
+    }}
+
+    a.updatePositions(parsed)
+    qty, _ := decimal.NewFromString("0.000573338")
+    assert.Equal(t, qty, btc.Positions[strat1].Qty)
+  })
+
+  t.Run("diffZero", func(t *testing.T) {
 
   })
 }
 
-var response = http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[
+var getClosedOrdersResponse = `[
   {
     "id": "a7c58468-1069-4e5f-a9c6-cfbd5f93c113",
     "client_order_id": "symbol[BTC/USD]_strat[rand2]_time[2025-02-24 17:22:00]",
@@ -184,4 +331,68 @@ var response = http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewRead
     "subtag": null,
     "source": "access_key"
   }
-]`))}
+]`
+
+
+var getAssetQtysResponse = `[
+  {
+    "asset_id": "64bbff51-59d6-4b3c-9351-13ad85e3c752",
+    "symbol": "BTCUSD",
+    "exchange": "CRYPTO",
+    "asset_class": "crypto",
+    "asset_marginable": false,
+    "qty": "0.010573338",
+    "avg_entry_price": "94461.402922925",
+    "side": "long",
+    "market_value": "999.536022",
+    "cost_basis": "998.772341",
+    "unrealized_pl": "0.763681",
+    "unrealized_plpc": "0.0007646196922468",
+    "unrealized_intraday_pl": "0.763681",
+    "unrealized_intraday_plpc": "0.0007646196922468",
+    "current_price": "94533.63",
+    "lastday_price": "95866.872",
+    "change_today": "-0.0139072233419695",
+    "qty_available": "0.010573338"
+  },
+  {
+    "asset_id": "35f33a69-f5d6-4dc9-b158-4485e5e92e4b",
+    "symbol": "ETHUSD",
+    "exchange": "CRYPTO",
+    "asset_class": "crypto",
+    "asset_marginable": false,
+    "qty": "0.376366581",
+    "avg_entry_price": "2653.806971194",
+    "side": "long",
+    "market_value": "997.418135",
+    "cost_basis": "998.804256",
+    "unrealized_pl": "-1.386121",
+    "unrealized_plpc": "-0.0013877804301226",
+    "unrealized_intraday_pl": "-1.386121",
+    "unrealized_intraday_plpc": "-0.0013877804301226",
+    "current_price": "2650.124069478",
+    "lastday_price": "2779.58",
+    "change_today": "-0.0465739178300319",
+    "qty_available": "0.376366581"
+  },
+  {
+    "asset_id": "71a012ba-9ac2-4b08-9cf0-e640f4e45f6c",
+    "symbol": "LINKUSD",
+    "exchange": "CRYPTO",
+    "asset_class": "crypto",
+    "asset_marginable": false,
+    "qty": "61.473846805",
+    "avg_entry_price": "16.270101813",
+    "side": "long",
+    "market_value": "1009.400565",
+    "cost_basis": "1000.185746",
+    "unrealized_pl": "9.214819",
+    "unrealized_plpc": "0.0092131077020968",
+    "unrealized_intraday_pl": "9.214819",
+    "unrealized_intraday_plpc": "0.0092131077020968",
+    "current_price": "16.42",
+    "lastday_price": "17.472",
+    "change_today": "-0.0602106227106227",
+    "qty_available": "61.473846805"
+  }
+]`

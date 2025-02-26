@@ -18,13 +18,13 @@ func urlHistBars(asset_class string, page_token string) string {
       url = fmt.Sprintf(
         "https://data.alpaca.markets/v2/stocks/bars?symbols=%s" +
         "&timeframe=1Min&start=%s&limit=%d&adjustment=all&feed=iex&",
-        strings.Join(constant.STOCK_LIST, "%2C"), t, constant.HIST_LIMIT,
+        strings.Join(constant.STOCK_SYMBOLS, "%2C"), t, constant.HIST_LIMIT,
       )
     case "crypto":
       url = fmt.Sprintf(
         "https://data.alpaca.markets/v1beta3/crypto/us/bars?symbols=%s" +
         "&timeframe=1Min&start=%s&limit=%d&",
-        strings.Replace(strings.Join(constant.CRYPTO_LIST, "%2C"), "/", "%2F", len(constant.CRYPTO_LIST)), 
+        strings.Replace(strings.Join(constant.CRYPTO_SYMBOLS, "%2C"), "/", "%2F", len(constant.CRYPTO_SYMBOLS)), 
         t, constant.HIST_LIMIT,
       )
   }

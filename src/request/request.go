@@ -14,6 +14,8 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
 
+var p = fastjson.Parser{}
+
 var HttpClient = &http.Client{
   Timeout: constant.HTTP_TIMEOUT_SEC,
   Transport: &http.Transport{
@@ -37,6 +39,7 @@ func GetReq(url string) ([]byte, error) {
   defer resp.Body.Close()
   body, err := io.ReadAll(resp.Body)
   if err != nil {
+    fmt.Println("Error reading body. ", err)
     return nil, err
   }
   if string(body) == "[]" {
@@ -49,7 +52,6 @@ func GetReq(url string) ([]byte, error) {
 }
 
 func parseBody(body []byte) ([]*fastjson.Value, error) {
-  var p = fastjson.Parser{}
   if string(body) == "[]" {
     return nil, nil
   }
@@ -77,7 +79,7 @@ func SendOrder(payload string) (int, error) {
   request.Header = constant.AUTH_HEADERS
   response, err := HttpClient.Do(request)
   if err != nil {
-    return response.StatusCode, err
+    return 0, err
   }
   defer response.Body.Close()
   return response.StatusCode, nil
@@ -98,8 +100,7 @@ func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
 
 // TODO: Make test
 func GetPositions(backoff_sec int, retries int) (arr []*fastjson.Value, err error) {
-  log.Println("retries", retries)
-  if retries >= constant.GET_POSITIONS_RETRIES {
+  if retries >= constant.REQUEST_RETRIES {
     print("here")
     return nil, errors.New("Max retries reached. Failed to get positions.")
   }
@@ -112,7 +113,6 @@ func GetPositions(backoff_sec int, retries int) (arr []*fastjson.Value, err erro
   } else {
     arr, err = parseBody(body)
   }
-  // log.Println("error", err.Error())
   if err != nil {
     return nil, err
   }
@@ -179,7 +179,7 @@ func CloseGTC(side string, symbol string, order_id string, qty decimal.Decimal) 
 }
 
 func CloseAllPositions(backoff_sec int, retries int) {
-  if retries >= 3 {
+  if retries >= constant.REQUEST_RETRIES {
     // TODO: Check if this could be a push message
     log.Printf("[ FAIL ]\tFailed to close all positions after %d retries\n", retries)
     return
@@ -275,12 +275,22 @@ func GetAssetQtys() (qtys map[string]decimal.Decimal, err error) {
   }
 
   qtys = make(map[string]decimal.Decimal)
+  var crypto bool
   for _, v  := range apos {
-    qty, err := decimal.NewFromString(v.Get("qty").String())
+    qty, err := decimal.NewFromString(string(v.GetStringBytes("qty")))
     if err != nil {
       return nil, err
     }
-    qtys[v.Get("symbol").String()] = qty
+    crypto = false
+    for _, s := range constant.CRYPTO_SYMBOLS {
+      if strings.Replace(s, "/", "", 1) == string(v.GetStringBytes("symbol")) {
+        qtys[s] = qty
+        crypto = true
+      }
+    }
+    if !crypto {
+      qtys[string(v.GetStringBytes("symbol"))] = qty
+    }
   }
 
   return

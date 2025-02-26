@@ -18,7 +18,7 @@ const (
   MAX_TRIGGER_TIME_DIFF_MS = 100 * time.Millisecond
   READ_DEADLINE_SEC = 20 * time.Second
   PING_INTERVAL_SEC = 10 * time.Second
-  GET_POSITIONS_RETRIES = 4
+  REQUEST_RETRIES = 4
 )
 
 var (
@@ -34,7 +34,7 @@ var (
   DB_PORT string
 )
 
-var CRYPTO_LIST = []string{
+var CRYPTO_SYMBOLS = []string{
   "BTC/USD",
   "ETH/USD",
   "USDT/USD",
@@ -58,7 +58,7 @@ var CRYPTO_LIST = []string{
   // "CRV/USD",
 }
 
-var STOCK_LIST = []string{
+var STOCK_SYMBOLS = []string{
   // "AAPL",
   // "MSFT",
   // "NVDA",

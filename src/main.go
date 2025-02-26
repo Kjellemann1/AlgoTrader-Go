@@ -17,7 +17,7 @@ func main() {
   marketCtx, marketCancel := context.WithCancel(rootCtx)
   accountCtx, accountCancel := context.WithCancel(rootCtx)
 
-  db_chan := make(chan *Query, len(constant.STOCK_LIST) + len(constant.CRYPTO_LIST))
+  db_chan := make(chan *Query, len(constant.STOCK_SYMBOLS) + len(constant.CRYPTO_SYMBOLS))
   defer close(db_chan)
 
   var wg sync.WaitGroup

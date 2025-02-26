@@ -67,8 +67,8 @@ func TestWindowUpdate(t *testing.T) {
 func TestPrepAssetsMap(t *testing.T) {
   assets := prepAssetsMap()
   assert.NotEmpty(t, assets)
-  assert.Equal(t, len(constant.STOCK_LIST), len(assets["stock"]))
-  assert.Equal(t, len(constant.CRYPTO_LIST), len(assets["crypto"]))
+  assert.Equal(t, len(constant.STOCK_SYMBOLS), len(assets["stock"]))
+  assert.Equal(t, len(constant.CRYPTO_SYMBOLS), len(assets["crypto"]))
 }
 
 func TestFillMissingMinutes(t *testing.T) {

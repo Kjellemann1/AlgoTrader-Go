@@ -14,11 +14,8 @@ import(
   "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/request"
   "github.com/Kjellemann1/AlgoTrader-Go/util"
+  "github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
-
-type ClosedOrder struct {
-  *fastjson.Value
-}
 
 type ParsedClosedOrder struct {
   Side *string
@@ -29,7 +26,7 @@ type ParsedClosedOrder struct {
   FillTime *time.Time
 }
 
-func (co *ClosedOrder) getString(element string) *string {
+func getString(co *fastjson.Value, element string) *string {
   byte := co.GetStringBytes(element)
   if byte == nil {
     return nil
@@ -38,7 +35,7 @@ func (co *ClosedOrder) getString(element string) *string {
   return &str
 }
 
-func (co *ClosedOrder) getStratName() *string {
+func getStratName(co *fastjson.Value) *string {
   byte := co.GetStringBytes("client_order_id")
   if byte == nil {
     return nil
@@ -47,7 +44,7 @@ func (co *ClosedOrder) getStratName() *string {
   return grepStratName(&str)
 }
 
-func (co *ClosedOrder) getFloat(element string) *float64 {
+func getFloat(co *fastjson.Value, element string) *float64 {
   byte := co.GetStringBytes(element)
   if byte == nil {
     return nil
@@ -61,7 +58,7 @@ func (co *ClosedOrder) getFloat(element string) *float64 {
   return &float
 }
 
-func (co *ClosedOrder) getFilledQty() *decimal.Decimal {
+func getFilledQty(co *fastjson.Value) *decimal.Decimal {
   byte := co.GetStringBytes("filled_qty")
   if byte == nil {
     return nil
@@ -78,7 +75,7 @@ func (co *ClosedOrder) getFilledQty() *decimal.Decimal {
   return &dec
 }
 
-func (co *ClosedOrder) getFillTime() *time.Time {
+func getFillTime(co *fastjson.Value) *time.Time {
   fill_time := co.GetStringBytes("filled_at")
   if fill_time == nil {
     return nil
@@ -92,43 +89,40 @@ func (co *ClosedOrder) getFillTime() *time.Time {
   return &fill_time_t
 }
 
-func (co *ClosedOrder) parse() *ParsedClosedOrder {
+func parse(co *fastjson.Value) *ParsedClosedOrder {
   return &ParsedClosedOrder{
-    Symbol: co.getString("symbol"),
-    Side: co.getString("side"),
-    StratName: co.getStratName(),
-    FilledAvgPrice: co.getFloat("filled_avg_price"),
-    FilledQty: co.getFilledQty(),
-    FillTime: co.getFillTime(),
+    Symbol: getString(co, "symbol"),
+    Side: getString(co, "side"),
+    StratName: getStratName(co),
+    FilledAvgPrice: getFloat(co, "filled_avg_price"),
+    FilledQty: getFilledQty(co),
+    FillTime: getFillTime(co),
   }
 }
 
 func (a *Account) parseClosedOrders(relevant map[string][]*fastjson.Value) map[string][]*ParsedClosedOrder {
   parsed := make(map[string][]*ParsedClosedOrder)
   for symbol, arr := range relevant {
-    for _, fjv := range arr {
-      co := &ClosedOrder{fjv}
-      parsed[symbol] = append(parsed[symbol], co.parse())
+    for _, co := range arr {
+      parsed[symbol] = append(parsed[symbol], parse(co))
     }
   }
 
   return parsed
 }
 
-func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string) {
-  backoff_sec := 1
+func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string, backoff_sec int) {
   retries := 0
-
   for {
-    status, err := request.CloseGTC("sell", symbol, "strat[reconnect_mutliple_diff]", diff)
+    status, err := request.CloseGTC("sell", symbol, "strat[reconnect_multiple_diff]", diff)
     if err != nil {
       util.Error(err, "Failed to send close order", "...")
     }
     switch status {
     case 403:
-      util.Warning(errors.New("forbidden Block"),
+      util.Warning(errors.New("forbidden block"),
         "Retries", retries,
-        "Trying again in (seconds)", &backoff_sec,
+        "Trying again in (seconds)", backoff_sec,
       )
       util.Backoff(&backoff_sec)
     case 200:
@@ -140,11 +134,11 @@ func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string) {
     default:
       util.Error(fmt.Errorf("failed to send close order. Status: %d", status),
         "Retries", retries,
-        "Trying again in (seconds)", &backoff_sec,
+        "Trying again in (seconds)", backoff_sec,
       )
       util.Backoff(&backoff_sec)
     }
-    if retries >= 5 {
+    if retries >= constant.REQUEST_RETRIES {
       util.Error(errors.New("max retries reached"),
         "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
       )
@@ -155,7 +149,7 @@ func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string) {
   }
 }
 
-func (a *Account) diffMultiple(parsed []*ParsedClosedOrder, asset_class string) {
+func (a *Account) multiple(parsed []*ParsedClosedOrder, asset_class string) {
   asset := a.assets[asset_class][*parsed[0].Symbol]
   for _, pco := range parsed {
     pos := asset.Positions[*pco.StratName]
@@ -166,7 +160,7 @@ func (a *Account) diffMultiple(parsed []*ParsedClosedOrder, asset_class string) 
   }
   diff_no_pending := asset.Qty.Sub(asset.sumNoPendingPosQtys())
   if !diff_no_pending.IsZero() {
-    a.sendCloseGTC(diff_no_pending, *parsed[0].Symbol)
+    a.sendCloseGTC(diff_no_pending, *parsed[0].Symbol, 0)
   }
 }
 
@@ -222,21 +216,22 @@ func (a *Account) updatePositions(parsed map[string][]*ParsedClosedOrder) {
     request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
+
   for asset_class := range a.assets {
-    for symbol := range parsed {
-      if len(parsed[symbol]) > 1 {
-        a.diffMultiple(parsed[symbol], asset_class)
+    for symbol, pcos := range parsed {
+      if len(pcos) > 1 {
+        a.multiple(pcos, asset_class)
         continue
       }
       diff := qtys[symbol].Sub((*a.assets[asset_class][symbol]).Qty)
       a.assets[asset_class][symbol].Qty = qtys[symbol]
       switch {
       case diff.IsPositive():
-        a.diffPositive(diff, asset_class, parsed[symbol])
+        a.diffPositive(diff, asset_class, pcos)
       case diff.IsNegative():
-        a.diffNegative(diff, asset_class, parsed[symbol])
+        a.diffNegative(diff, asset_class, pcos)
       default:
-        a.diffZero(asset_class, parsed[symbol])
+        a.diffZero(asset_class, pcos)
       }
     }
   }
@@ -249,12 +244,15 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
       for _, pos := range v {
         position_id := m.GetStringBytes("client_order_id")  // client_order_id == PositionID
         symbol := m.GetStringBytes("symbol")
+        fill_time := m.GetStringBytes("filled_at")
 
         if position_id == nil {
           util.Warning(errors.New("PositionID not found"), nil)
           continue
         } else if symbol == nil {
           util.Warning(errors.New("symbol not found"), nil)
+          continue
+        } else if string(fill_time) == "null" {
           continue
         }
 
@@ -272,24 +270,30 @@ func (a *Account) filterRelevantOrders(arr []*fastjson.Value, pending map[string
 func (a *Account) checkPending() {
   globRwm.RLock()
   defer globRwm.RUnlock()
+  
   pending := pendingOrders(a.assets)
   if len(pending) == 0 {
     log.Println("[ OK ]\tNo pending orders")
     return
   }
-  arr, err := request.GetClosedOrders(positionsSymbols(pending), 5, 3)
+
+  arr, err := request.GetClosedOrders(positionsSymbols(pending), 5, 0)
   if err != nil {
     NNP.NoNewPositionsTrue("")
     util.Error(err, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
     request.CloseAllPositions(2, 0)
     log.Panicln("SHUTTING DOWN")
   }
+
   relevant := a.filterRelevantOrders(arr, pending)
   if len(relevant) == 0 {
     log.Println("[ OK ]\tNo pending orders closed")
     return
   }
+
   parsed := a.parseClosedOrders(relevant)
+
   a.updatePositions(parsed)
+
   log.Println("[ OK ]\tPending orders updated")
 }

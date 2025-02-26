@@ -12,13 +12,18 @@ import (
 )
 
 func stallIfOrdersPending(assets map[string]map[string]*Asset) {
+  var retries int
   ticker := time.NewTicker(3 * time.Second)
   defer ticker.Stop()
   for range ticker.C {
     pending := pendingOrders(assets)
     if len(pending) == 0 {
       return
+    } else if retries > 10 {
+      log.Printf("[ WARNING ]\tTimeout (30 seconds) waiting for pending orders. Shutting down ...\n")
+      return
     } else {
+      retries++
       log.Println("Waiting for pending orders:")
       for symbol, positions := range pending {
         count_open := 0

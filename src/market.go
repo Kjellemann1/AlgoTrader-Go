@@ -58,9 +58,9 @@ func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
 func (m *Market) checkAllSymbolsInSubscription(element *fastjson.Value) {
   var symbol_list_ptr *[]string
   if m.asset_class == "stock" {
-    symbol_list_ptr = &constant.STOCK_LIST
+    symbol_list_ptr = &constant.STOCK_SYMBOLS
   } else if m.asset_class == "crypto" {
-    symbol_list_ptr = &constant.CRYPTO_LIST
+    symbol_list_ptr = &constant.CRYPTO_SYMBOLS
   }
   var subs = make(map[string][]string)
   for _, sub_type := range []string{"bars", "trades"} {
@@ -177,10 +177,10 @@ func (m *Market) connect() (err error) {
 func (m *Market) subscribe() (err error) {
   var sub_msg_symbols string = ""
   if m.asset_class == "stock" {
-    sub_msg_symbols = strings.Join(constant.STOCK_LIST, "\",\"")
+    sub_msg_symbols = strings.Join(constant.STOCK_SYMBOLS, "\",\"")
   }
   if m.asset_class == "crypto" {
-    sub_msg_symbols = strings.Join(constant.CRYPTO_LIST, "\",\"")
+    sub_msg_symbols = strings.Join(constant.CRYPTO_SYMBOLS, "\",\"")
   }
   sub_msg := fmt.Appendf(make([]byte, 0), `{"action":"subscribe", "trades":["%s"], "bars":["%s"]}`, 
     sub_msg_symbols, sub_msg_symbols, 
@@ -244,7 +244,8 @@ func (m *Market) listen(ctx context.Context) {
         return
       default:
         util.Error(err)
-        continue
+        m.conn.Close()
+        return
       }
     }
     m.worker_pool_chan <- MarketMessage{message, received_time}

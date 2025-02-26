@@ -199,15 +199,15 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
   }
 }
 
-func (a *Account) getEvent(pm *fastjson.Value) *string {
+func (a *Account) getEvent(data *fastjson.Value) *string {
   // Shutdown if nil
   // Only handle fill, partial_fill and canceled events.
   // Other events are likely not relevant. https://alpaca.markets/docs/api-documentation/api-v2/streaming/
-  event := pm.Get("data").GetStringBytes("event")
+  event := data.GetStringBytes("event")
   if event == nil {
     NNP.NoNewPositionsTrue("")
     util.Error(
-      errors.New("EVENT NOT IN TRADE UPDATE"), "Parsed message", pm.String(),
+      errors.New("EVENT NOT IN TRADE UPDATE"), "Parsed message", data.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
     request.CloseAllPositions(2, 0)
@@ -222,8 +222,8 @@ func (a *Account) getEvent(pm *fastjson.Value) *string {
   return &event_str
 }
 
-func (p *Account) getPositionID(pm *fastjson.Value) *string {
-  position_id := pm.Get("data").Get("order").GetStringBytes("client_order_id")  // client_order_id == PositionID
+func (p *Account) getPositionID(order *fastjson.Value) *string {
+  position_id := order.GetStringBytes("client_order_id")  // client_order_id == PositionID
   if position_id == nil {
     util.Warning(errors.New("PositionID not found in order update"), nil)
     return nil
@@ -245,9 +245,9 @@ func grepStratName(position_id *string) *string {
   return nil
 }
 
-func (a *Account) getStratName(pm *fastjson.Value) *string {
+func (a *Account) getStratName(order *fastjson.Value) *string {
   // Return if nil 
-  position_id := a.getPositionID(pm)
+  position_id := a.getPositionID(order)
 
   if position_id == nil {
     return nil
@@ -256,13 +256,13 @@ func (a *Account) getStratName(pm *fastjson.Value) *string {
   return grepStratName(position_id)
 }
 
-func (a *Account) getAssetClass(pm *fastjson.Value) *string {
+func (a *Account) getAssetClass(order *fastjson.Value) *string {
   // Shutdown if nil
-  asset_class := pm.Get("data").Get("order").GetStringBytes("asset_class")
+  asset_class := order.GetStringBytes("asset_class")
   if asset_class == nil {
     NNP.NoNewPositionsTrue("")
     util.Error(
-      errors.New("ASSET CLASS NOT IN TRADE UPDATE"), "Parsed message", pm.String(),
+      errors.New("ASSET CLASS NOT IN TRADE UPDATE"), "Parsed message", order.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
     request.CloseAllPositions(2, 0)
@@ -277,13 +277,13 @@ func (a *Account) getAssetClass(pm *fastjson.Value) *string {
   return &asset_class_str
 }
 
-func (a *Account) getSymbol(pm *fastjson.Value) *string {
+func (a *Account) getSymbol(order *fastjson.Value) *string {
   // Return if nil, shutdown if fails
-  symbol := pm.Get("data").Get("order").GetStringBytes("symbol")
+  symbol := order.GetStringBytes("symbol")
   if symbol == nil {
     NNP.NoNewPositionsTrue("")
     util.Error(
-      errors.New("SYMBOL NOT IN TRADE UPDATE"), "Parsed message", pm.String(),
+      errors.New("SYMBOL NOT IN TRADE UPDATE"), "Parsed message", order.String(),
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
     request.CloseAllPositions(2, 0)
@@ -295,8 +295,8 @@ func (a *Account) getSymbol(pm *fastjson.Value) *string {
   return &symbol_str
 }
 
-func (a *Account) getSide(pm *fastjson.Value) *string {
-  side := pm.Get("data").Get("order").GetStringBytes("side")
+func (a *Account) getSide(order *fastjson.Value) *string {
+  side := order.GetStringBytes("side")
   if side == nil {
     return nil
   }
@@ -306,9 +306,9 @@ func (a *Account) getSide(pm *fastjson.Value) *string {
   return &side_str
 }
 
-func (a *Account) getAssetQty(pm *fastjson.Value) *decimal.Decimal {
+func (a *Account) getAssetQty(data *fastjson.Value) *decimal.Decimal {
   // Return if nil, shutdown if fails
-  asset_qty := pm.Get("data").GetStringBytes("position_qty")
+  asset_qty := data.GetStringBytes("position_qty")
   if asset_qty == nil {
     return nil
   }
@@ -324,8 +324,8 @@ func (a *Account) getAssetQty(pm *fastjson.Value) *decimal.Decimal {
   return &asset_qty_dec
 }
 
-func (a *Account) getFillTime(pm *fastjson.Value) *time.Time {
-  fill_time := pm.Get("data").Get("order").GetStringBytes("filled_at")
+func (a *Account) getFillTime(order *fastjson.Value) *time.Time {
+  fill_time := order.GetStringBytes("filled_at")
   if fill_time == nil {
     return nil
   }
@@ -338,8 +338,8 @@ func (a *Account) getFillTime(pm *fastjson.Value) *time.Time {
   return &fill_time_t
 }
 
-func (a *Account) getFilledAvgPrice(pm *fastjson.Value) *float64 {
-  filled_avg_price := pm.Get("data").Get("order").GetStringBytes("filled_avg_price")
+func (a *Account) getFilledAvgPrice(order *fastjson.Value) *float64 {
+  filled_avg_price := order.GetStringBytes("filled_avg_price")
   if filled_avg_price == nil {
     return nil
   }
@@ -353,22 +353,25 @@ func (a *Account) getFilledAvgPrice(pm *fastjson.Value) *float64 {
 }
 
 func (a *Account) updateParser(pm *fastjson.Value) *OrderUpdate {
-  event := a.getEvent(pm)
+  data := pm.Get("data")
+  order := data.Get("order")
+
+  event := a.getEvent(data)
   if event == nil {
     return nil
   }
 
-  strat_name := a.getStratName(pm)
+  strat_name := a.getStratName(order)
   if strat_name == nil {
     return nil
   }
 
-  asset_class := a.getAssetClass(pm)
-  symbol := a.getSymbol(pm)
-  side := a.getSide(pm)
-  asset_qty := a.getAssetQty(pm)
-  fill_time := a.getFillTime(pm)
-  filled_avg_price := a.getFilledAvgPrice(pm)
+  asset_qty := a.getAssetQty(data)
+  asset_class := a.getAssetClass(order)
+  symbol := a.getSymbol(order)
+  side := a.getSide(order)
+  fill_time := a.getFillTime(order)
+  filled_avg_price := a.getFilledAvgPrice(order)
 
   return &OrderUpdate {
     Event:            event,

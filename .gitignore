@@ -27,3 +27,4 @@ go.work.sum
 AlgoTrader-Go
 logs/
 temp/
+responses/
