@@ -188,6 +188,8 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
     err_chan := make(chan error)
     childCtx, cancel := context.WithCancel(ctx)
 
+    a.checkPending()
+
     go a.listen(childCtx, err_chan)
     go a.PingPong(childCtx, err_chan)
 
