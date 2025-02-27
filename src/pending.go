@@ -228,8 +228,10 @@ func (a *Account) updatePositions(parsed map[string][]*ParsedClosedOrder) {
         a.multiple(pcos, asset_class)
         continue
       }
+
       diff := qtys[symbol].Sub((*a.assets[asset_class][symbol]).Qty)
       a.assets[asset_class][symbol].Qty = qtys[symbol]
+
       switch {
       case diff.IsPositive():
         a.diffPositive(diff, asset_class, pcos)

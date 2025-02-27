@@ -199,7 +199,7 @@ func (m *Market) subscribe() (err error) {
   return
 }
 
-func (m *Market) PingPong(ctx context.Context) {
+func (m *Market) PingPong(ctx context.Context, err_chan chan error) {
   if err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
     util.Warning(err)
   }
@@ -221,20 +221,14 @@ func (m *Market) PingPong(ctx context.Context) {
       if err := m.conn.WriteControl(
         websocket.PingMessage, []byte("ping"),
         time.Now().Add(5 * time.Second)); err != nil {
-        util.Warning(err)
-        m.conn.Close()
+        err_chan <- err
         return
       }
     }
   }
 }
 
-func (m *Market) listen(ctx context.Context) {
-  wg := sync.WaitGroup{}
-  defer wg.Wait()
-  n_workers := len(m.assets)
-  m.initiateWorkerPool(n_workers, &wg)
-  defer close(m.worker_pool_chan)
+func (m *Market) listen(ctx context.Context, err_chan chan error) {
   for {
     _, message, err := m.conn.ReadMessage()
     received_time := time.Now().UTC()
@@ -243,8 +237,7 @@ func (m *Market) listen(ctx context.Context) {
       case <-ctx.Done():
         return
       default:
-        util.Error(err)
-        m.conn.Close()
+        err_chan <- err
         return
       }
     }
@@ -254,46 +247,61 @@ func (m *Market) listen(ctx context.Context) {
 
 func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
+  defer close(m.worker_pool_chan)
+  wpwg := sync.WaitGroup{}
+  m.initiateWorkerPool(len(m.assets), &wpwg)
+
   backoff_sec := 2
   retries := 0
   initial := true
+
   for {
+    if err := m.connect(); err != nil {
+      if initial {
+        log.Panicln(err.Error())
+      }
+      if retries < 5 {
+        util.Error(err, "Retries", retries)
+      } else {
+        util.Error(err,
+          "MAXIMUM NUMBER OF RETRIES REACHED", retries, 
+          "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+        )
+        request.CloseAllPositions(2, 0)
+        log.Panic("SHUTTING DOWN")
+      }
+      util.Backoff(&backoff_sec)
+      retries++
+      continue
+    }
+
+    if err := m.subscribe(); err != nil {
+      if initial {
+        log.Panicln(err.Error())
+      }
+      util.Error(err)
+      util.Backoff(&backoff_sec)
+      retries++
+      continue
+    }
+
+    initial = false
+    backoff_sec = 5
+    retries = 0
+
+    err_chan := make(chan error)
+    childCtx, cancel := context.WithCancel(ctx)
+
+    go m.listen(childCtx, err_chan)
+    go m.PingPong(childCtx, err_chan)
+
     select {
     case <-ctx.Done():
+      cancel()
       return
-    default:
-      if err := m.connect(); err != nil {
-        if initial {
-          log.Panicln(err.Error())
-        }
-        if retries < 5 {
-          util.Error(err, "Retries", retries)
-        } else {
-          util.Error(err,
-            "MAXIMUM NUMBER OF RETRIES REACHED", retries, 
-            "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
-          )
-          request.CloseAllPositions(2, 0)
-          log.Panic("SHUTTING DOWN")
-        }
-        util.Backoff(&backoff_sec)
-        retries++
-        continue
-      }
-      if err := m.subscribe(); err != nil {
-        if initial {
-          log.Panicln(err.Error())
-        }
-        util.Error(err)
-        util.Backoff(&backoff_sec)
-        retries++
-        continue
-      }
-      initial = false
-      backoff_sec = 5
-      retries = 0
-      go m.listen(ctx)
-      m.PingPong(ctx)
+    case err := <-err_chan:
+      util.Error(err)
+      cancel()
       m.conn.Close()
     }
   }

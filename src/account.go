@@ -110,25 +110,7 @@ func (a *Account) connect() (err error) {
   return nil
 }
 
-func (a *Account) listen(ctx context.Context) {
-  for {
-    _, message, err := a.conn.ReadMessage()
-    if err != nil {
-      select {
-      case <-ctx.Done():
-        return
-      default:
-        util.Error(err)
-        a.conn.Close()
-        return
-      }
-    }
-
-    a.messageHandler(message)
-  }
-}
-
-func (a *Account) PingPong(ctx context.Context) {
+func (a *Account) PingPong(ctx context.Context, err_chan chan error) {
   if err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
     util.Warning(err)
   }
@@ -153,10 +135,26 @@ func (a *Account) PingPong(ctx context.Context) {
       if err := a.conn.WriteControl(
         websocket.PingMessage, []byte("ping"), 
         time.Now().Add(5 * time.Second)); err != nil {
-        util.Warning(err)
+        err_chan <-err
         return
       }
     }
+  }
+}
+
+func (a *Account) listen(ctx context.Context, err_chan chan error) {
+  for {
+    _, message, err := a.conn.ReadMessage()
+    if err != nil {
+      select {
+      case <-ctx.Done():
+        return
+      default:
+        err_chan <-err
+        return
+      }
+    }
+    a.messageHandler(message)
   }
 }
 
@@ -166,34 +164,40 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
   retries := 0
 
   for {
-    select {
-    case <-ctx.Done():
-      return
-    default:
-      if err := a.connect() ; err != nil {
-        if retries < 5 {
-          util.Error(err, "Retries", retries)
-        } else {
-          NNP.NoNewPositionsTrue("")
-          util.Error(err, 
-            "MAXIMUM NUMBER OF RETRIES REACHED", retries, 
-            "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
-          )
-          request.CloseAllPositions(2, 0)
-          log.Panic("SHUTTING DOWN")
-        }
-
-        util.Backoff(&backoff_sec)
-        retries++
-        continue
+    if err := a.connect() ; err != nil {
+      if retries < 5 {
+        util.Error(err, "Retries", retries)
+      } else {
+        NNP.NoNewPositionsTrue("")
+        util.Error(err, 
+          "MAXIMUM NUMBER OF RETRIES REACHED", retries, 
+          "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
+        )
+        request.CloseAllPositions(2, 0)
+        log.Panic("SHUTTING DOWN")
       }
 
-      backoff_sec = 5
-      retries = 0
+      util.Backoff(&backoff_sec)
+      retries++
+      continue
+    }
 
-      go a.checkPending()
-      go a.listen(ctx)
-      a.PingPong(ctx)
+    backoff_sec = 5
+    retries = 0
+
+    err_chan := make(chan error)
+    childCtx, cancel := context.WithCancel(ctx)
+
+    go a.listen(childCtx, err_chan)
+    go a.PingPong(childCtx, err_chan)
+
+    select {
+    case <-ctx.Done():
+      cancel()
+      return
+    case err := <-err_chan:
+      util.Error(err)
+      cancel()
       a.conn.Close()
     }
   }
