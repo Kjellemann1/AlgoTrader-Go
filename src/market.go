@@ -40,7 +40,8 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Mar
   return
 }
 
-func (m *Market) initiateWorkerPool(n_workers int, wg *sync.WaitGroup) {
+func (m *Market) initiateWorkerPool(n_workers int) {
+  var wg sync.WaitGroup
   for range n_workers {
     wg.Add(1)
     go func() {
@@ -146,7 +147,7 @@ func (m *Market) messageHandler(mm MarketMessage) error {
         m.onInitialMessages(element)
       case "error":
         err := errors.New(string(mm.message))
-        util.ErrorPanic(err, "Message", string(mm.message))
+        return err
       default:
         util.Warning(errors.New("Unknown message type"), "Message type", message_type, "Message", string(mm.message))
     }
@@ -163,12 +164,11 @@ func (m *Market) connect() (err error) {
   for range 2 {
     _, message, err = m.conn.ReadMessage()
     if err != nil {
-      log.Println("Message", string(message))
       return
     }
     err = m.messageHandler(MarketMessage{message, time.Now().UTC()})
     if err != nil {
-      util.Warning(err)
+      return
     }
   }
   return
@@ -199,7 +199,8 @@ func (m *Market) subscribe() (err error) {
   return
 }
 
-func (m *Market) PingPong(ctx context.Context, err_chan chan error) {
+func (m *Market) PingPong(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+  defer connWg.Done()
   if err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
     util.Warning(err)
   }
@@ -221,6 +222,7 @@ func (m *Market) PingPong(ctx context.Context, err_chan chan error) {
       if err := m.conn.WriteControl(
         websocket.PingMessage, []byte("ping"),
         time.Now().Add(5 * time.Second)); err != nil {
+        util.Error(err)
         err_chan <- err
         return
       }
@@ -228,7 +230,8 @@ func (m *Market) PingPong(ctx context.Context, err_chan chan error) {
   }
 }
 
-func (m *Market) listen(ctx context.Context, err_chan chan error) {
+func (m *Market) listen(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+  defer connWg.Done()
   for {
     _, message, err := m.conn.ReadMessage()
     received_time := time.Now().UTC()
@@ -237,6 +240,7 @@ func (m *Market) listen(ctx context.Context, err_chan chan error) {
       case <-ctx.Done():
         return
       default:
+        util.Error(err)
         err_chan <- err
         return
       }
@@ -247,62 +251,59 @@ func (m *Market) listen(ctx context.Context, err_chan chan error) {
 
 func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
-  defer close(m.worker_pool_chan)
-  wpwg := sync.WaitGroup{}
-  m.initiateWorkerPool(len(m.assets), &wpwg)
 
-  backoff_sec := 2
+  defer close(m.worker_pool_chan)
+  m.initiateWorkerPool(len(m.assets))
+
+  backoff_sec_min := 2
+  backoff_sec := backoff_sec_min
   retries := 0
-  initial := true
 
   for {
     if err := m.connect(); err != nil {
-      if initial {
-        log.Panicln(err.Error())
-      }
       if retries < 5 {
         util.Error(err, "Retries", retries)
+        util.Backoff(&backoff_sec)
+        retries++
+        continue
       } else {
-        util.Error(err,
-          "MAXIMUM NUMBER OF RETRIES REACHED", retries, 
-          "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
-        )
+        util.Error(err, "Max retries reached", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
         request.CloseAllPositions(2, 0)
-        log.Panic("SHUTTING DOWN")
+        log.Panicln("SHUTTING DOWN")
       }
-      util.Backoff(&backoff_sec)
-      retries++
-      continue
     }
 
     if err := m.subscribe(); err != nil {
-      if initial {
-        log.Panicln(err.Error())
-      }
       util.Error(err)
       util.Backoff(&backoff_sec)
       retries++
       continue
     }
 
-    initial = false
-    backoff_sec = 5
+    backoff_sec = backoff_sec_min
     retries = 0
 
     err_chan := make(chan error)
     childCtx, cancel := context.WithCancel(ctx)
 
-    go m.listen(childCtx, err_chan)
-    go m.PingPong(childCtx, err_chan)
+    var connWg sync.WaitGroup
+
+    connWg.Add(1)
+    go m.listen(childCtx, &connWg, err_chan)
+    connWg.Add(1)
+    go m.PingPong(childCtx, &connWg, err_chan)
 
     select {
     case <-ctx.Done():
       cancel()
+      m.conn.Close()
+      connWg.Wait()
       return
-    case err := <-err_chan:
-      util.Error(err)
+    case <-err_chan:
       cancel()
       m.conn.Close()
+      connWg.Wait()
+      time.Sleep(1 * time.Second)
     }
   }
 }

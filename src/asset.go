@@ -438,7 +438,7 @@ func (a *Asset) close(order_type string, strat_name string) {
 func (a *Asset) stopLoss(percent float64, strat_name string) {
   // TODO:
   //   -> Log if stop loss triggered to db
-  //   -> Implement logic for short positions
+  //   -> Implement logic for short positions (This requires significant changes throughout the code)
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }

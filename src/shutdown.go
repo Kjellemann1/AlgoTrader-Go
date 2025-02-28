@@ -20,6 +20,7 @@ func stallIfOrdersPending(assets map[string]map[string]*Asset) {
     if len(pending) == 0 {
       return
     } else if retries > 10 {
+      // TODO: Need to log pending to positions table, so checkPending() is triggered on startup
       log.Printf("[ WARNING ]\tTimeout reached waiting for pending orders: 30 seconds\t  -> Shutting down ...\n")
       return
     } else {

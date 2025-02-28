@@ -110,7 +110,9 @@ func (a *Account) connect() (err error) {
   return nil
 }
 
-func (a *Account) PingPong(ctx context.Context, err_chan chan error) {
+func (a *Account) PingPong(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+  defer connWg.Done()
+
   if err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
     util.Warning(err)
   }
@@ -135,6 +137,7 @@ func (a *Account) PingPong(ctx context.Context, err_chan chan error) {
       if err := a.conn.WriteControl(
         websocket.PingMessage, []byte("ping"), 
         time.Now().Add(5 * time.Second)); err != nil {
+        util.Error(err)
         err_chan <-err
         return
       }
@@ -142,7 +145,9 @@ func (a *Account) PingPong(ctx context.Context, err_chan chan error) {
   }
 }
 
-func (a *Account) listen(ctx context.Context, err_chan chan error) {
+func (a *Account) listen(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+  defer connWg.Done()
+
   for {
     _, message, err := a.conn.ReadMessage()
     if err != nil {
@@ -150,39 +155,39 @@ func (a *Account) listen(ctx context.Context, err_chan chan error) {
       case <-ctx.Done():
         return
       default:
+        util.Error(err)
         err_chan <-err
         return
       }
     }
+
     a.messageHandler(message)
   }
 }
 
 func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
   defer wg.Done()
-  backoff_sec := 2
+
+  backoff_sec_min := 2
+  backoff_sec := backoff_sec_min
   retries := 0
 
   for {
     if err := a.connect() ; err != nil {
       if retries < 5 {
         util.Error(err, "Retries", retries)
+        util.Backoff(&backoff_sec)
+        retries++
+        continue
       } else {
         NNP.NoNewPositionsTrue("")
-        util.Error(err, 
-          "MAXIMUM NUMBER OF RETRIES REACHED", retries, 
-          "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
-        )
+        util.Error(err, "Max retries reached", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
         request.CloseAllPositions(2, 0)
-        log.Panic("SHUTTING DOWN")
+        log.Panicln("SHUTTING DOWN")
       }
-
-      util.Backoff(&backoff_sec)
-      retries++
-      continue
     }
 
-    backoff_sec = 5
+    backoff_sec = backoff_sec_min
     retries = 0
 
     err_chan := make(chan error)
@@ -190,17 +195,22 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
 
     a.checkPending()
 
-    go a.listen(childCtx, err_chan)
-    go a.PingPong(childCtx, err_chan)
+    var connWg sync.WaitGroup
+
+    go a.listen(childCtx, &connWg, err_chan)
+    go a.PingPong(childCtx, &connWg, err_chan)
 
     select {
     case <-ctx.Done():
       cancel()
+      a.conn.Close()
+      connWg.Wait()
       return
-    case err := <-err_chan:
-      util.Error(err)
+    case <-err_chan:
       cancel()
       a.conn.Close()
+      connWg.Wait()
+      time.Sleep(1 * time.Second)
     }
   }
 }
