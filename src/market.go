@@ -27,6 +27,14 @@ type Market struct {
   conn              *websocket.Conn
   url               string
   worker_pool_chan  chan MarketMessage
+
+  listen            func(ctx context.Context, wg *sync.WaitGroup, err_chan chan error)
+  pingPong          func(ctx context.Context, wg *sync.WaitGroup, err_chan chan error)
+}
+
+func (m *Market) init() {
+  m.listen = m.listenFunc
+  m.pingPong = m.pingPongFunc
 }
 
 func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Market) {
@@ -37,6 +45,7 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Mar
     assets: assets,
     worker_pool_chan: make(chan MarketMessage, n_workers),
   }
+  m.init()
   return
 }
 
@@ -57,11 +66,9 @@ func (m *Market) initiateWorkerPool(n_workers int) {
 }
 
 func (m *Market) checkAllSymbolsInSubscription(element *fastjson.Value) {
-  var symbol_list_ptr *[]string
-  if m.asset_class == "stock" {
-    symbol_list_ptr = &constant.STOCK_SYMBOLS
-  } else if m.asset_class == "crypto" {
-    symbol_list_ptr = &constant.CRYPTO_SYMBOLS
+  symbols := []string{}
+  for s := range m.assets {
+    symbols = append(symbols, s)
   }
   var subs = make(map[string][]string)
   for _, sub_type := range []string{"bars", "trades"} {
@@ -71,7 +78,7 @@ func (m *Market) checkAllSymbolsInSubscription(element *fastjson.Value) {
       subs[sub_type][i] = string(fj_symbol.GetStringBytes())
     }
     for _, symbol := range subs[sub_type] {
-      if !slices.Contains(*symbol_list_ptr, symbol) {
+      if !slices.Contains(symbols, symbol) {
         log.Panicln("Missing symbol in subscription", symbol)
       }
     }
@@ -82,6 +89,7 @@ func (m *Market) checkAllSymbolsInSubscription(element *fastjson.Value) {
 func (m *Market) onInitialMessages(element *fastjson.Value) {
   msg := string(element.GetStringBytes("msg"))
   switch msg {
+
     case "connected":
       log.Println("[ OK ]\tConnected to websocket for", m.asset_class)
     case "authenticated":
@@ -176,13 +184,11 @@ func (m *Market) connect() (err error) {
 }
 
 func (m *Market) subscribe() (err error) {
-  var sub_msg_symbols string = ""
-  if m.asset_class == "stock" {
-    sub_msg_symbols = strings.Join(constant.STOCK_SYMBOLS, "\",\"")
+  symbols := []string{}
+  for s := range m.assets {
+    symbols = append(symbols, s)
   }
-  if m.asset_class == "crypto" {
-    sub_msg_symbols = strings.Join(constant.CRYPTO_SYMBOLS, "\",\"")
-  }
+  sub_msg_symbols := strings.Join(symbols, "\",\"")
   sub_msg := fmt.Appendf(make([]byte, 0), `{"action":"subscribe", "trades":["%s"], "bars":["%s"]}`, 
     sub_msg_symbols, sub_msg_symbols, 
   )
@@ -200,7 +206,7 @@ func (m *Market) subscribe() (err error) {
   return
 }
 
-func (m *Market) PingPong(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+func (m *Market) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
   defer connWg.Done()
   if err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
     util.Warning(err)
@@ -231,7 +237,7 @@ func (m *Market) PingPong(ctx context.Context, connWg *sync.WaitGroup, err_chan 
   }
 }
 
-func (m *Market) listen(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+func (m *Market) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
   defer connWg.Done()
   for {
     _, message, err := m.conn.ReadMessage()
@@ -250,13 +256,12 @@ func (m *Market) listen(ctx context.Context, connWg *sync.WaitGroup, err_chan ch
   }
 }
 
-func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
+func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min float64) {
   defer wg.Done()
 
   defer close(m.worker_pool_chan)
   m.initiateWorkerPool(len(m.assets))
 
-  backoff_sec_min := 2
   backoff_sec := backoff_sec_min
   retries := 0
 
@@ -284,7 +289,7 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
     backoff_sec = backoff_sec_min
     retries = 0
 
-    err_chan := make(chan error, 2)
+    err_chan := make(chan error, 1)
     childCtx, cancel := context.WithCancel(ctx)
 
     var connWg sync.WaitGroup
@@ -293,7 +298,7 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
     go m.listen(childCtx, &connWg, err_chan)
 
     connWg.Add(1)
-    go m.PingPong(childCtx, &connWg, err_chan)
+    go m.pingPong(childCtx, &connWg, err_chan)
 
     select {
     case <-ctx.Done():
@@ -305,7 +310,6 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
       cancel()
       m.conn.Close()
       connWg.Wait()
-      time.Sleep(1 * time.Second)
     }
   }
 }

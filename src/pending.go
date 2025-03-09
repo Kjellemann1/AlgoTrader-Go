@@ -111,7 +111,7 @@ func (a *Account) parseClosedOrders(relevant map[string][]*fastjson.Value) map[s
   return parsed
 }
 
-func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string, backoff_sec int) {
+func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string, backoff_sec float64) {
   retries := 0
   for {
     status, err := request.CloseGTC("sell", symbol, "strat[reconnect_multiple_diff]", diff)

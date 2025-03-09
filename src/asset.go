@@ -308,7 +308,7 @@ func (a *Asset) openChecks(strat_name string, trigger_time time.Time) bool {
 
 func (a *Asset) sendOpen(order_type string, position_id string, symbol string, asset_class string, strat_name string, last_close float64) {
   // TODO: Log retries
-  backoff_sec := 1
+  backoff_sec := 1.0
   retries := 0
   for {
     status, err := a.sendOpenOrder(order_type, position_id, symbol, asset_class, last_close)
@@ -331,7 +331,7 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
       }
       return
     case 403:
-      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Open\tRetrying in (%d) seconds ...",
+      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Open\tRetrying in (%f.2) seconds ...",
         util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
       )
       util.Backoff(&backoff_sec)
@@ -371,7 +371,7 @@ func (a *Asset) closeUpdatePosition(pos *Position, trigger_time time.Time, order
 
 func (a *Asset) sendClose(strat_name string, open_side string, order_type string, position_id string, symbol string, qty decimal.Decimal) {
   // TODD: Log retries
-  backoff_sec := 1
+  backoff_sec := 1.0
   retries := 0
   for {
     status, err := a.sendCloseOrder(open_side, order_type, position_id, symbol, qty)
@@ -385,7 +385,7 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
     case 403:
       // TODO: Make sure this is actually a wash trade by checking response, and not
       // insufficient funds, qty etc.
-      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Close\tRetrying in (%d) seconds ...",
+      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Close\tRetrying in (%f.1) seconds ...",
         util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
       )
       util.BackoffWithMax(&backoff_sec, 20)

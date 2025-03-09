@@ -99,9 +99,8 @@ func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
 }
 
 // TODO: Make test
-func GetPositions(backoff_sec int, retries int) (arr []*fastjson.Value, err error) {
+func GetPositions(backoff_sec float64, retries int) (arr []*fastjson.Value, err error) {
   if retries >= constant.REQUEST_RETRIES {
-    print("here")
     return nil, errors.New("Max retries reached. Failed to get positions.")
   }
   body, err := GetReq(constant.ENDPOINT + "/positions")
@@ -178,7 +177,7 @@ func CloseGTC(side string, symbol string, order_id string, qty decimal.Decimal) 
   return status, nil
 }
 
-func CloseAllPositions(backoff_sec int, retries int) {
+func CloseAllPositions(backoff_sec float64, retries int) {
   if retries >= constant.REQUEST_RETRIES {
     // TODO: Check if this could be a push message
     log.Printf("[ FAIL ]\tFailed to close all positions after %d retries\n", retries)
@@ -236,7 +235,7 @@ func urlGetClosedOrders(symbols map[string]map[string]int) (url string) {
   return
 }
 
-func GetClosedOrders(symbols map[string]map[string]int, backoff_sec int, retries int) (parsed []*fastjson.Value, err error) {
+func GetClosedOrders(symbols map[string]map[string]int, backoff_sec float64, retries int) (parsed []*fastjson.Value, err error) {
   if retries >= 4 {
     return nil, errors.New("Max retries reached. Failed to get closed orders.")
   }

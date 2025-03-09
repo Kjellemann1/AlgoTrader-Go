@@ -13,12 +13,12 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/push"
 )
 
-func BackoffWithMax(backoff_sec *int, backoff_max_sec int) {
+func BackoffWithMax(backoff_sec *float64, backoff_max_sec float64) {
   time.Sleep(time.Duration(*backoff_sec) * time.Second)
   *backoff_sec = min(*backoff_sec * 2, backoff_max_sec)
 }
 
-func Backoff(backoff_sec *int) {
+func Backoff(backoff_sec *float64) {
   time.Sleep(time.Duration(*backoff_sec) * time.Second)
   *backoff_sec = *backoff_sec * 2
 }
@@ -55,7 +55,8 @@ func Info(message string, details ...any) {
   push.Info(logMsg)
 }
 
-func Error(err error, details ...any) {
+var Error = ErrorFunc
+func ErrorFunc(err error, details ...any) {
   if err == nil {
     log.Println(errors.New("Called with nil error"))
     return
@@ -105,7 +106,8 @@ func ErrorPanic(err error, details ...any) {
   push.Error(logMsg)
 }
 
-func Warning(err error, details ...any) {
+var Warning = WarningFunc
+func WarningFunc(err error, details ...any) {
   if err == nil {
     log.Println(errors.New("Called with nil error"))
     return

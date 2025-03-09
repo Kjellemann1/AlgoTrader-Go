@@ -187,7 +187,7 @@ func (db *Database) pingAndSetupQueries() error {
 }
 
 func (db *Database) errorHandler(
-  err error, func_name string, response sql.Result, query *Query, retries int, backoff_sec *int,
+  err error, func_name string, response sql.Result, query *Query, retries int, backoff_sec *float64,
 ) {
   util.Warning2(err, "Query", *query, "Response", response, "Retries", retries)
   err = db.pingAndSetupQueries()
@@ -217,7 +217,7 @@ func (db *Database) errorHandler(
   NNP.NoNewPositionsFalse("Database")
 }
 
-func (db *Database) insertTradeFillTimeNil(query *Query, backoff_sec int, retries int) {
+func (db *Database) insertTradeFillTimeNil(query *Query, backoff_sec float64, retries int) {
   response, err := db.insert_trade_fill_time_nil.Exec(
     query.Action,
     query.PositionID,
@@ -240,7 +240,7 @@ func (db *Database) insertTradeFillTimeNil(query *Query, backoff_sec int, retrie
   }
 }
 
-func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
+func (db *Database) insertTrade(query *Query, backoff_sec float64, retries int) {
   response, err := db.insert_trade.Exec(
     query.Action,
     query.PositionID,
@@ -264,7 +264,7 @@ func (db *Database) insertTrade(query *Query, backoff_sec int, retries int) {
   }
 }
 
-func (db *Database) insertPositionFillTimeNil(query *Query, backoff_sec int, retries int) {
+func (db *Database) insertPositionFillTimeNil(query *Query, backoff_sec float64, retries int) {
   response, err := db.insert_position_fill_time_nil.Exec(
     query.PositionID,
     query.Symbol,
@@ -287,7 +287,7 @@ func (db *Database) insertPositionFillTimeNil(query *Query, backoff_sec int, ret
   }
 }
 
-func (db *Database) insertPosition(query *Query, backoff_sec int, retries int) {
+func (db *Database) insertPosition(query *Query, backoff_sec float64, retries int) {
   response, err := db.insert_position.Exec(
     query.PositionID,
     query.Symbol,
@@ -311,7 +311,7 @@ func (db *Database) insertPosition(query *Query, backoff_sec int, retries int) {
   }
 }
 
-func (db *Database) deleteAllPositions(backoff_sec int, retries int) {
+func (db *Database) deleteAllPositions(backoff_sec float64, retries int) {
   response, err := db.conn.Exec("DELETE FROM positions WHERE 1;")
   if err != nil {
     db.errorHandler(err, "deleteAllPositions", response, nil, retries, &backoff_sec)
@@ -320,28 +320,28 @@ func (db *Database) deleteAllPositions(backoff_sec int, retries int) {
   }
 }
 
-func (db *Database) deletePosition(query *Query, backoff_sec int, retries int) {
+func (db *Database) deletePosition(query *Query, backoff_sec float64, retries int) {
   response, err := db.delete_position.Exec(query.Symbol, query.StratName)
   if err != nil {
     db.errorHandler(err, "deletePosition", response, query, retries, &backoff_sec)
   }
 }
 
-func (db *Database) updateTrailingStop(query *Query, backoff_sec int, retries int) {
+func (db *Database) updateTrailingStop(query *Query, backoff_sec float64, retries int) {
   response, err := db.update_trailing_stop.Exec(query.TrailingStopPrice, query.Symbol, query.StratName)
   if err != nil {
     db.errorHandler(err, "updateTrailingStop", response, query, retries, &backoff_sec)
   }
 }
 
-func (db *Database) updateNCloseOrders(query *Query, backoff_sec int, retries int) {
+func (db *Database) updateNCloseOrders(query *Query, backoff_sec float64, retries int) {
   response, err := db.update_n_close_orders.Exec(query.NCloseOrders, query.Symbol, query.StratName)
   if err != nil {
     db.errorHandler(err, "updateNCloseOrders", response, query, retries, &backoff_sec)
   }
 }
 
-func (db *Database) queryHandler(query *Query, backoff_sec int, retries int) {
+func (db *Database) queryHandler(query *Query, backoff_sec float64, retries int) {
   // I am fairly certain the reason for fill_time being nil is
   // that closed orders where not filled. But I added one for open orders
   // as well to see if it happens there too.

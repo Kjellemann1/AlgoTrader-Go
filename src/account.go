@@ -165,10 +165,9 @@ func (a *Account) listen(ctx context.Context, connWg *sync.WaitGroup, err_chan c
   }
 }
 
-func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
+func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min float64) {
   defer wg.Done()
 
-  backoff_sec_min := 2
   backoff_sec := backoff_sec_min
   retries := 0
 
