@@ -5,7 +5,6 @@ package main
 
 import (
   "time"
-  "log"
   "sync"
   "github.com/shopspring/decimal"
   "github.com/Kjellemann1/AlgoTrader-Go/util"
@@ -57,7 +56,7 @@ func NewPosition(symbol string) *Position {
 }
 
 func (p *Position) LogOpen() *Query {
-  log.Println("OPEN >>\t" + util.AddWhitespace(p.Symbol, 10) + "\t" + p.StratName)
+  util.Open(util.AddWhitespace(p.Symbol, 10) + "\t" + p.StratName)
 
   return &Query{
     Action: "open",
@@ -79,7 +78,7 @@ func (p *Position) LogOpen() *Query {
 }
 
 func (p *Position) LogClose() *Query {
-  log.Println("<< CLOSE\t" + util.AddWhitespace(p.Symbol, 10) + "\t" + p.StratName)
+  util.Close(util.AddWhitespace(p.Symbol, 10) + "\t" + p.StratName)
 
   var side string
   if p.OpenSide == "long" {

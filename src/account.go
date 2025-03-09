@@ -47,7 +47,7 @@ func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Accou
 func (a *Account) onAuth(element *fastjson.Value) {
   msg := string(element.Get("data").GetStringBytes("status"))
   if msg == "authorized" {
-    log.Println("[ OK ]\tAuthenticated with account websocket")
+    util.Ok("Authenticated with account websocket")
   } else {
     log.Panicln("[ ERROR ]\tAuthorization with account websocket failed")
   }
@@ -71,7 +71,7 @@ func (a *Account) messageHandler(message []byte) {
       }
       a.orderUpdateHandler(update)
     case "listening":
-      log.Println("[ OK ]\tListening to order updates")
+      util.Ok("Listening to order updates")
   }
 }
 
@@ -127,7 +127,7 @@ func (a *Account) PingPong(ctx context.Context, connWg *sync.WaitGroup, err_chan
 
   ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
-  log.Println("[ OK ]\tPingPong initiated for account websocket")
+  util.Ok("PingPong initiated for account websocket")
 
   for {
     select {
@@ -189,7 +189,7 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min
     backoff_sec = backoff_sec_min
     retries = 0
 
-    err_chan := make(chan error, 2)
+    err_chan := make(chan error, 1)
     childCtx, cancel := context.WithCancel(ctx)
 
     a.checkPending()

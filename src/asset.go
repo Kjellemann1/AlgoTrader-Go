@@ -331,7 +331,7 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
       }
       return
     case 403:
-      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Open\tRetrying in (%f.2) seconds ...",
+      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Open\tRetrying in (%.0f) seconds ...",
         util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
       )
       util.Backoff(&backoff_sec)
@@ -385,7 +385,7 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
     case 403:
       // TODO: Make sure this is actually a wash trade by checking response, and not
       // insufficient funds, qty etc.
-      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Close\tRetrying in (%f.1) seconds ...",
+      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Close\tRetrying in (%.0f) seconds ...",
         util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
       )
       util.BackoffWithMax(&backoff_sec, 20)

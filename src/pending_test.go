@@ -36,6 +36,9 @@ func init() {
 
   util.Error = func(err error, details ...any) {}
   util.Warning = func(err error, details ...any) {}
+  util.Ok = func(message string) {}
+  util.Open = func(message string) {}
+  util.Close = func(message string) {}
 
   push.DisablePush()
 }

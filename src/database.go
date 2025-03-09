@@ -316,7 +316,7 @@ func (db *Database) deleteAllPositions(backoff_sec float64, retries int) {
   if err != nil {
     db.errorHandler(err, "deleteAllPositions", response, nil, retries, &backoff_sec)
   } else {
-    log.Println("[ OK ]\tAll positions deleted from database")
+    util.Ok("All positions deleted from database")
   }
 }
 
@@ -382,7 +382,7 @@ func (db *Database) queryHandler(query *Query, backoff_sec float64, retries int)
 }
 
 func (db *Database) listen() {
-  log.Println("[ OK ]\tDatabase listening")
+  util.Ok("Database listening")
 
   for {
     query := <-db.db_chan
@@ -485,5 +485,5 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
     log.Printf("[ INFO ]\tRetrieved position: %s %s %s", symbol, stratName, qty.String())
   }
 
-  log.Println("[ OK ]\tState retrieved from database")
+  util.Ok("State retrieved from database")
 }

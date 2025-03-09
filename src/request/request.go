@@ -203,7 +203,7 @@ func CloseAllPositions(backoff_sec float64, retries int) {
     CloseAllPositions(backoff_sec, retries)
   }
 
-  log.Printf("[ OK ]\tSent order to close all positions\n")
+  util.Ok("Sent order to close all positions")
 }
 
 func urlGetClosedOrders(symbols map[string]map[string]int) (url string) {
@@ -260,7 +260,7 @@ func GetClosedOrders(symbols map[string]map[string]int, backoff_sec float64, ret
   }
 
   if retries > 0 {
-    log.Printf("[ OK ]\tRetrieved closed orders after (%d) retries\n", retries)
+    util.Ok(fmt.Sprintf("Retrieved closed orders after (%d) retries", retries))
   }
 
   return parsed, nil

@@ -41,6 +41,21 @@ func AddWhitespace(s string, n int) string {
   return s
 }
 
+var Close= CloseFunc
+func CloseFunc(message string) {
+  log.Println("[ CLOSE ]\t" + message)
+}
+
+var Open= OpenFunc
+func OpenFunc(message string) {
+  log.Println("[ OPEN ]\t" + message)
+}
+
+var Ok = OkFunc
+func OkFunc(message string) {
+  log.Println("[ OK ]\t" + message)
+}
+
 func Info(message string, details ...any) {
   logMsg := "[ INFO ]\t" + message
   for i := 0; i < len(details); i += 2 {

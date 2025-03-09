@@ -83,7 +83,7 @@ func (m *Market) checkAllSymbolsInSubscription(element *fastjson.Value) {
       }
     }
   }
-  log.Printf("[ OK ]\tAll symbols present in websocket subscription for %s", m.asset_class)
+  util.Ok(fmt.Sprintf("All symbols present in websocket subscription for %s", m.asset_class))
 }
 
 func (m *Market) onInitialMessages(element *fastjson.Value) {
@@ -91,9 +91,9 @@ func (m *Market) onInitialMessages(element *fastjson.Value) {
   switch msg {
 
     case "connected":
-      log.Println("[ OK ]\tConnected to websocket for", m.asset_class)
+      util.Ok(fmt.Sprintf("Connected to websocket for %s", m.asset_class))
     case "authenticated":
-      log.Println("[ OK ]\tAuthenticated with websocket for", m.asset_class)
+      util.Ok(fmt.Sprintf("Authenticated with websocket for %s", m.asset_class))
     default: // subscription
       m.checkAllSymbolsInSubscription(element)
   }
@@ -220,7 +220,7 @@ func (m *Market) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_c
   })
   ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
-  log.Printf("[ OK ]\tPingPong initiated for %s market websocket\n", m.asset_class)
+  util.Ok(fmt.Sprintf("PingPong initiated for %s market websocket\n", m.asset_class))
   for {
     select {
     case <-ctx.Done():

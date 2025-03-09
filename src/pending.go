@@ -129,7 +129,7 @@ func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string, backoff_sec 
       if retries > 0 {
         util.Warning(errors.New("order sent after retries"), "Retries", retries)
       }
-      log.Println("[ OK ]\tReconciliation close order sent")
+      util.Ok("Reconciliation close order sent")
       return
     default:
       util.Error(fmt.Errorf("failed to send close order. Status: %d", status),
@@ -280,7 +280,7 @@ func (a *Account) checkPending() {
   
   pending := pendingOrders(a.assets)
   if len(pending) == 0 {
-    log.Println("[ OK ]\tNo pending orders")
+    util.Ok("No pending orders")
     return
   }
 
@@ -294,7 +294,7 @@ func (a *Account) checkPending() {
 
   relevant := a.filterRelevantOrders(arr, pending)
   if len(relevant) == 0 {
-    log.Println("[ OK ]\tNo pending orders closed")
+    util.Ok("No pending orders closed")
     return
   }
 
@@ -302,5 +302,5 @@ func (a *Account) checkPending() {
 
   a.updatePositions(parsed)
 
-  log.Println("[ OK ]\tPending orders updated")
+  util.Ok("Pending orders updated")
 }
