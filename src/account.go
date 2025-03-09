@@ -190,14 +190,17 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context) {
     backoff_sec = backoff_sec_min
     retries = 0
 
-    err_chan := make(chan error)
+    err_chan := make(chan error, 2)
     childCtx, cancel := context.WithCancel(ctx)
 
     a.checkPending()
 
     var connWg sync.WaitGroup
 
+    connWg.Add(1)
     go a.listen(childCtx, &connWg, err_chan)
+
+    connWg.Add(1)
     go a.PingPong(childCtx, &connWg, err_chan)
 
     select {

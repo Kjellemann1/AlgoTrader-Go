@@ -96,6 +96,7 @@ func (m *Market) onMarketBarUpdate(element *fastjson.Value, received_time time.T
   asset := m.assets[string(element.GetStringBytes("S"))]
   t, _ := time.Parse(time.RFC3339, string(element.GetStringBytes("t")))
   t = t.Add(1 * time.Minute)
+
   asset.updateWindowOnBar(
     element.GetFloat64("o"),
     element.GetFloat64("h"),
@@ -283,13 +284,14 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context) {
     backoff_sec = backoff_sec_min
     retries = 0
 
-    err_chan := make(chan error)
+    err_chan := make(chan error, 2)
     childCtx, cancel := context.WithCancel(ctx)
 
     var connWg sync.WaitGroup
 
     connWg.Add(1)
     go m.listen(childCtx, &connWg, err_chan)
+
     connWg.Add(1)
     go m.PingPong(childCtx, &connWg, err_chan)
 
