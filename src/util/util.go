@@ -41,12 +41,12 @@ func AddWhitespace(s string, n int) string {
   return s
 }
 
-var Close= CloseFunc
+var Close = CloseFunc
 func CloseFunc(message string) {
   log.Println("[ CLOSE ]\t" + message)
 }
 
-var Open= OpenFunc
+var Open = OpenFunc
 func OpenFunc(message string) {
   log.Println("[ OPEN ]\t" + message)
 }

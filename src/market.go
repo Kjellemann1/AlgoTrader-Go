@@ -220,7 +220,7 @@ func (m *Market) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_c
   })
   ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
-  util.Ok(fmt.Sprintf("PingPong initiated for %s market websocket\n", m.asset_class))
+  util.Ok(fmt.Sprintf("PingPong initiated for %s market websocket", m.asset_class))
   for {
     select {
     case <-ctx.Done():

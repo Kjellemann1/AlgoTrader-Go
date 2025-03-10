@@ -95,7 +95,6 @@ func TestMarketReconnect(t *testing.T) {
     assert.Panics(t, func() { m.start(&xWg, rootCtx, 0) })  // Should panic after server is closed
 
     rootWg.Wait()
-
     rootCancel()
 
     assert.Equal(t, 2, subMsgCount)
