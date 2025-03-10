@@ -33,7 +33,7 @@ func main() {
   go db.Start(&wg, assets)
 
   wg.Add(1)
-  a := NewAccount(assets, db_chan)
+  a := NewAccount(assets, constant.WSS_ACCOUNT, db_chan)
   go a.start(&wg, accountCtx, 2)
 
   if _, ok := assets["stock"]; ok {

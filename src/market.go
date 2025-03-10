@@ -32,11 +32,6 @@ type Market struct {
   pingPong          func(ctx context.Context, wg *sync.WaitGroup, err_chan chan error)
 }
 
-func (m *Market) init() {
-  m.listen = m.listenFunc
-  m.pingPong = m.pingPongFunc
-}
-
 func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Market) {
   n_workers := len(assets)
   m = &Market{
@@ -45,7 +40,8 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Mar
     assets: assets,
     worker_pool_chan: make(chan MarketMessage, n_workers),
   }
-  m.init()
+  m.pingPong = m.pingPongFunc
+  m.listen = m.listenFunc
   return
 }
 

@@ -34,52 +34,70 @@ type Account struct {
   parser fastjson.Parser
   db_chan chan *Query
   assets map[string]map[string]*Asset
+  url string
+
+  listen func(context.Context, *sync.WaitGroup, chan error)
+  pingPong func(context.Context, *sync.WaitGroup, chan error)
 }
 
-func NewAccount(assets map[string]map[string]*Asset, db_chan chan *Query) *Account {
-  return &Account{
+func NewAccount(assets map[string]map[string]*Asset, url string, db_chan chan *Query) *Account {
+  a := &Account{
     parser: fastjson.Parser{},
     assets: assets,
     db_chan: db_chan,
+    url: url,
   }
+  a.pingPong = a.pingPongFunc
+  a.listen = a.listenFunc
+  return a
 }
 
-func (a *Account) onAuth(element *fastjson.Value) {
-  msg := string(element.Get("data").GetStringBytes("status"))
-  if msg == "authorized" {
-    util.Ok("Authenticated with account websocket")
-  } else {
-    log.Panicln("[ ERROR ]\tAuthorization with account websocket failed")
-  }
-}
-
-func (a *Account) messageHandler(message []byte) {
+func (a *Account) onAuth(message []byte) (string, error) {
   parsed_msg, err := a.parser.ParseBytes(message)
   if err != nil {
     util.Error(err)
-    return
+    return "", err
+  }
+
+  data := parsed_msg.Get("data")
+  if string(data.GetStringBytes("status")) == "authorized" {
+    util.Ok("Authenticated with account websocket")
+    return "", nil
+  } else {
+    action := string(data.GetStringBytes("action"))
+    if action == "listen" {
+      return action, nil
+    } else {
+      return "", errors.New("Failed to authenticate with account websocket")
+    }
+  }
+}
+
+func (a *Account) messageHandler(message []byte) error {
+  parsed_msg, err := a.parser.ParseBytes(message)
+  if err != nil {
+    util.Error(err)
+    return err
   }
 
   message_type := string(parsed_msg.GetStringBytes("stream"))
   switch message_type {
-    case "authorization":
-      a.onAuth(parsed_msg)
     case "trade_updates":
       update := a.updateParser(parsed_msg)
       if update == nil {
-        return
+        return nil
       }
       a.orderUpdateHandler(update)
     case "listening":
       util.Ok("Listening to order updates")
   }
+
+  return nil
 }
 
 func (a *Account) connect() (err error) {
   var response *http.Response
-  a.conn, response, err = websocket.DefaultDialer.Dial(
-    "wss://paper-api.alpaca.markets/stream", nil,
-  )
+  a.conn, response, err = websocket.DefaultDialer.Dial(a.url, nil)
   if err != nil {
     log.Println("Response", response.Body)
     return err
@@ -90,27 +108,37 @@ func (a *Account) connect() (err error) {
     constant.KEY, constant.SECRET),
   )
   if err != nil {
-    return
+    return err
   }
 
-  _, message, err := a.conn.ReadMessage()
-  if err != nil {
-    log.Println("Message", string(message))
-    return
+  for {
+    _, message, err := a.conn.ReadMessage()
+    if err != nil {
+      log.Println("Message", string(message))
+      return err
+    }
+
+    action, err := a.onAuth(message)
+    if err != nil{
+      return err
+    } else if action == "listen" {
+      continue
+    }
+
+    break
   }
-  a.messageHandler(message)
 
   err = a.conn.WriteMessage(websocket.TextMessage,
     []byte(`{"action":"listen","data":{"streams":["trade_updates"]}}`),
   )
   if err != nil {
-    return
+    return err
   }
 
   return nil
 }
 
-func (a *Account) PingPong(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+func (a *Account) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
   defer connWg.Done()
 
   if err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
@@ -145,9 +173,8 @@ func (a *Account) PingPong(ctx context.Context, connWg *sync.WaitGroup, err_chan
   }
 }
 
-func (a *Account) listen(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+func (a *Account) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
   defer connWg.Done()
-
   for {
     _, message, err := a.conn.ReadMessage()
     if err != nil {
@@ -160,8 +187,7 @@ func (a *Account) listen(ctx context.Context, connWg *sync.WaitGroup, err_chan c
         return
       }
     }
-
-    a.messageHandler(message)
+    _ = a.messageHandler(message)
   }
 }
 
@@ -200,7 +226,7 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min
     go a.listen(childCtx, &connWg, err_chan)
 
     connWg.Add(1)
-    go a.PingPong(childCtx, &connWg, err_chan)
+    go a.pingPong(childCtx, &connWg, err_chan)
 
     select {
     case <-ctx.Done():
@@ -212,7 +238,6 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min
       cancel()
       a.conn.Close()
       connWg.Wait()
-      time.Sleep(1 * time.Second)
     }
   }
 }
