@@ -118,7 +118,7 @@ type Asset struct {
   Symbol            string
   Positions         map[string]*Position
   Qty               decimal.Decimal
-  Class        string
+  Class             string
   Time              time.Time
   ReceivedTime      time.Time
   lastCloseIsTrade  bool
@@ -133,6 +133,9 @@ type Asset struct {
 
   Rwm               sync.RWMutex
   Mutex             sync.Mutex
+
+  close            func(string, string)
+  open             func(string, string, string)
 }
 
 func newAsset(asset_class string, symbol string) (a *Asset) {
@@ -150,6 +153,8 @@ func newAsset(asset_class string, symbol string) (a *Asset) {
       (*Asset).rand,
     },
   }
+  a.close = a.closeFunc
+  a.open = a.openFunc
   a.startStrategies()
   return
 }
@@ -340,7 +345,7 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
   }
 }
 
-func (a *Asset) open(side string, order_type string, strat_name string) {
+func (a *Asset) openFunc(side string, order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
   if !a.openChecks(strat_name, trigger_time) {
     return
@@ -372,12 +377,15 @@ func (a *Asset) closeUpdatePosition(pos *Position, trigger_time time.Time, order
 func (a *Asset) sendClose(strat_name string, open_side string, order_type string, position_id string, symbol string, qty decimal.Decimal) {
   // TODD: Log retries
   backoff_sec := 1.0
+  backoff_max := 8.0
   retries := 0
+  
   for {
     status, err := a.sendCloseOrder(open_side, order_type, position_id, symbol, qty)
     if err != nil {
       util.Error(err, "Symbol", symbol, "Strat", strat_name)
     }
+
     switch status {
     case 422:
       log.Println("[ CANCEL ]\t" + a.Symbol + "\tStatus:", status)
@@ -388,8 +396,7 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
       log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Close\tRetrying in (%.0f) seconds ...",
         util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
       )
-      util.BackoffWithMax(&backoff_sec, 20)
-      retries++
+      util.BackoffWithMax(&backoff_sec, backoff_max)
     case 200:
       if retries == 1 {
         log.Printf("[ INFO ]\t%s\t%s\tClose successful on retry", 
@@ -406,19 +413,21 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
       util.Error(errors.New("Sending close order failed"),
         "Symbol", symbol, "Status", status, "Retrying in (seconds)", backoff_sec,
       )
-      util.BackoffWithMax(&backoff_sec, 20)
-      retries++
+      util.BackoffWithMax(&backoff_sec, backoff_max)
     }
+
     if retries > 1 {
       NNP.NoNewPositionsTrue("Close")
       util.Error(errors.New("Close failed on retry"),
         "Symbol", symbol, "Strat", strat_name, "Retries", retries,
       )
     }
+
+    retries++
   }
 }
 
-func (a *Asset) close(order_type string, strat_name string) {
+func (a *Asset) closeFunc(order_type string, strat_name string) {
   trigger_time := time.Now().UTC()
   if _, ok := a.Positions[strat_name]; !ok {
     return
@@ -435,6 +444,16 @@ func (a *Asset) close(order_type string, strat_name string) {
   a.sendClose(strat_name, open_side, order_type, position_id, symbol, qty)
 }
 
+func (a *Asset) priceDeviation(strat_name string) float64 {
+  fill_price := a.Positions[strat_name].OpenFilledAvgPrice
+
+  if fill_price == 0 {
+    return 0
+  }
+
+  return (a.C[a.i(0)] / fill_price - 1) * 100
+}
+
 func (a *Asset) stopLoss(percent float64, strat_name string) {
   // TODO:
   //   -> Log if stop loss triggered to db
@@ -442,12 +461,7 @@ func (a *Asset) stopLoss(percent float64, strat_name string) {
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
-  fill_price := a.Positions[strat_name].OpenFilledAvgPrice
-  if fill_price == 0 {
-    return
-  }
-  dev := (fill_price / a.C[a.i(0)] - 1) * 100
-  if dev < (percent * -1) {
+  if a.priceDeviation(strat_name) < (percent * -1) {
     a.close("IOC", strat_name)
     log.Printf("[ INFO ]\t%s\t%s\tStopLoss", a.Symbol, strat_name)
   }
@@ -460,12 +474,7 @@ func (a *Asset) takeProfit(percent float64, strat_name string) {
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
-  fill_price := a.Positions[strat_name].OpenFilledAvgPrice
-  if fill_price == 0 {
-    return
-  }
-  dev := (fill_price / a.C[a.i(0)] - 1) * 100
-  if dev > percent {
+  if a.priceDeviation(strat_name) > percent {
     a.close("IOC", strat_name)
     log.Printf("[ INFO ]\t%s\t%s\tTakeProfit", a.Symbol, strat_name)
   }

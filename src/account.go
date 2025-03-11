@@ -30,11 +30,11 @@ type OrderUpdate struct {
 }
 
 type Account struct {
-  conn *websocket.Conn
-  parser fastjson.Parser
+  conn    *websocket.Conn
+  parser  fastjson.Parser
   db_chan chan *Query
-  assets map[string]map[string]*Asset
-  url string
+  assets  map[string]map[string]*Asset
+  url     string
 
   listen func(context.Context, *sync.WaitGroup, chan error)
   pingPong func(context.Context, *sync.WaitGroup, chan error)

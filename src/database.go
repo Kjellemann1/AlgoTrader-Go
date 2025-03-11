@@ -417,6 +417,7 @@ func (db *Database) Start(wg *sync.WaitGroup, assets map[string]map[string]*Asse
 }
 
 func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
+  // TODO: Check that retrieved qtys match server qtys
   globRwm.Lock()
   defer globRwm.Unlock()
 

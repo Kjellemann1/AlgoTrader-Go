@@ -163,20 +163,20 @@ func (m *Market) messageHandler(mm MarketMessage) error {
 func (m *Market) connect() (err error) {
   m.conn, _, err = websocket.DefaultDialer.Dial(m.url, constant.AUTH_HEADERS)
   if err != nil {
-    return
+    return err
   }
   var message []byte
   for range 2 {
     _, message, err = m.conn.ReadMessage()
     if err != nil {
-      return
+      return err
     }
     err = m.messageHandler(MarketMessage{message, time.Now().UTC()})
     if err != nil {
-      return
+      return err
     }
   }
-  return
+  return nil
 }
 
 func (m *Market) subscribe() (err error) {

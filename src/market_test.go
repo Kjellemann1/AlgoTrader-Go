@@ -82,7 +82,7 @@ func TestMarketReconnect(t *testing.T) {
       err_chan <- errors.New("mockPingPong")
     }
 
-    assert.Panics(t, func() { m.start(&xWg, rootCtx, 0) })  // Should panic after server is closed
+    assert.Panics(t, func() { m.start(&xWg, rootCtx, 0) }, "Expected panic after server close")
     rootCancel()
 
     rootWg.Wait()
@@ -96,7 +96,7 @@ func TestMarketReconnect(t *testing.T) {
     assert.Equal(t, 2, subMsgCount)
   })
 
-  t.Run("pingPong error", func(t *testing.T) {
+  t.Run("listen error", func(t *testing.T) {
     urlChan := make(chan string)
     defer close(urlChan)
     signalChan := make(chan int8)
@@ -120,7 +120,7 @@ func TestMarketReconnect(t *testing.T) {
       err_chan <- errors.New("mockListen")
     }
 
-    assert.Panics(t, func() { m.start(&xWg, rootCtx, 0) })  // Should panic after server is closed
+    assert.Panics(t, func() { m.start(&xWg, rootCtx, 0) }, "Expected panic after server close")
     rootCancel()
 
     rootWg.Wait()

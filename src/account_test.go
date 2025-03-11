@@ -29,7 +29,7 @@ func (c *mockAccountConn) read() string {
 func mockServerAccount(urlChan chan string, msgChan chan string, rootWg *sync.WaitGroup, signalChan chan int8) {
   defer rootWg.Done()
   var wg sync.WaitGroup
-  wg.Add(3)  // wg = 2 since wg.Done() should be called 2 times due to reconnect
+  wg.Add(3)  // wg = 3 since wg.Done() should be called 3 times due to reconnect
   iter := 0
   upgrader := websocket.Upgrader{}
   server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,10 +78,8 @@ func TestAccountReconnect(t *testing.T) {
     var rootWg sync.WaitGroup
     rootWg.Add(1)
 
-    var xWg sync.WaitGroup
-    xWg.Add(1)
-
     go mockServerAccount(urlChan, msgChan, &rootWg, signalChan)
+
 
     a := NewAccount(assets, <-urlChan, db_chan)
     a.pingPong = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan error) {
@@ -90,7 +88,9 @@ func TestAccountReconnect(t *testing.T) {
       err_chan <- errors.New("mockPingPong")
     }
 
-    assert.Panics(t, func() { a.start(&xWg, rootCtx, 0) })  // Should panic after server is closed
+    var wg sync.WaitGroup
+    wg.Add(1)
+    assert.Panics(t, func() { a.start(&wg, rootCtx, 0) }, "Expected panic after server close")
     rootCancel()
 
     rootWg.Wait()
@@ -104,7 +104,7 @@ func TestAccountReconnect(t *testing.T) {
     assert.Equal(t, 5, subMsgCount)
   })
 
-  t.Run("pingPong error", func(t *testing.T) {
+  t.Run("listen error", func(t *testing.T) {
     urlChan := make(chan string)
     defer close(urlChan)
     signalChan := make(chan int8)
@@ -115,7 +115,6 @@ func TestAccountReconnect(t *testing.T) {
 
     var rootWg sync.WaitGroup
     rootWg.Add(1)
-
 
     go mockServerAccount(urlChan, msgChan, &rootWg, signalChan)
 
@@ -128,7 +127,7 @@ func TestAccountReconnect(t *testing.T) {
 
     var wg sync.WaitGroup
     wg.Add(1)
-    assert.Panics(t, func() { a.start(&wg, rootCtx, 0) })  // Should panic after server is closed
+    assert.Panics(t, func() { a.start(&wg, rootCtx, 0) }, "Expected panic after server close")
     rootCancel()
 
     rootWg.Wait()

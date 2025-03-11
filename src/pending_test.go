@@ -251,7 +251,11 @@ func TestUpdatePositions(t *testing.T) {
         db_chan: make(chan *Query),
       }
       a.assets["crypto"] = make(map[string]*Asset)
-      a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
+      a.assets["crypto"]["BTC/USD"] = &Asset{
+        Symbol: "BTC/USD", 
+        Positions: make(map[string]*Position),
+        close: func(string, string) {},
+      }
       btc := a.assets["crypto"]["BTC/USD"]
       btc.Qty, _ = decimal.NewFromString("0.020573338")
 
@@ -292,7 +296,11 @@ func TestUpdatePositions(t *testing.T) {
         db_chan: make(chan *Query),
       }
       a.assets["crypto"] = make(map[string]*Asset)
-      a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
+      a.assets["crypto"]["BTC/USD"] = &Asset{
+        Symbol: "BTC/USD",
+        Positions: make(map[string]*Position),
+        close: func(string, string) {},
+      }
       btc := a.assets["crypto"]["BTC/USD"]
       btc.Qty, _ = decimal.NewFromString("0.010573338")
 
@@ -322,7 +330,11 @@ func TestUpdatePositions(t *testing.T) {
         db_chan: make(chan *Query),
       }
       a.assets["crypto"] = make(map[string]*Asset)
-      a.assets["crypto"]["BTC/USD"] = &Asset{Symbol: "BTC/USD", Positions: make(map[string]*Position)}
+      a.assets["crypto"]["BTC/USD"] = &Asset{
+        Symbol: "BTC/USD",
+        Positions: make(map[string]*Position),
+        close: func(string, string) {},
+      }
       btc := a.assets["crypto"]["BTC/USD"]
       btc.Qty, _ = decimal.NewFromString("0.010573338")
 

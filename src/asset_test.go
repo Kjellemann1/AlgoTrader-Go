@@ -193,3 +193,79 @@ func TestSumNoPendingPosQtys(t *testing.T) {
   a.Positions["4"] = &Position{Qty: decimal.NewFromInt(2), OpenOrderPending: false, CloseOrderPending: false}
   assert.Equal(t, decimal.NewFromInt(3), a.sumNoPendingPosQtys())
 }
+
+func TestPriceDeviation(t *testing.T) {
+  a := newAssetTesting()
+  p := &a.C[constant.WINDOW_SIZE - 1]
+  a.Positions = make(map[string]*Position)
+  a.Positions["foo"] = &Position{OpenFilledAvgPrice: 100}
+
+  *p = 100
+  assert.Equal(t, 0.0, a.priceDeviation("foo"))
+
+  *p = 101
+  assert.InDelta(t, 1.0, a.priceDeviation("foo"), 1e-9)
+
+  *p = 99
+  assert.InDelta(t, -1.0, a.priceDeviation("foo"), 1e-9)
+}
+
+func TestStopLoss(t *testing.T) {
+  var accum int
+
+  a := newAssetTesting()
+  p := &a.C[constant.WINDOW_SIZE - 1]
+  a.close = func(string, string) {
+    accum+= 1
+  }
+
+  a.stopLoss(5.0, "foo")
+  assert.Equal(t, 0, accum)
+
+  a.Positions = make(map[string]*Position)
+  a.Positions["foo"] = &Position{OpenFilledAvgPrice: 100}
+
+  *p = 110
+  a.stopLoss(5.0, "foo")
+  assert.Equal(t, 0, accum)
+
+  *p = 100
+  a.stopLoss(5.0, "foo")
+  assert.Equal(t, 0, accum)
+
+  *p = 90
+  a.stopLoss(5.0, "foo")
+  assert.Equal(t, 1, accum)
+}
+
+func TestTakeProfit(t *testing.T) {
+  var accum int
+
+  a := newAssetTesting()
+  p := &a.C[constant.WINDOW_SIZE - 1]
+  a.close = func(string, string) {
+    accum+= 1
+  }
+
+  a.takeProfit(5.0, "foo")
+  assert.Equal(t, 0, accum)
+
+  a.Positions = make(map[string]*Position)
+  a.Positions["foo"] = &Position{OpenFilledAvgPrice: 100}
+
+  *p = 90
+  a.takeProfit(5.0, "foo")
+  assert.Equal(t, 0, accum)
+
+  *p = 100
+  a.takeProfit(5.0, "foo")
+  assert.Equal(t, 0, accum)
+
+  *p = 110
+  a.takeProfit(5.0, "foo")
+  assert.Equal(t, 1, accum)
+}
+
+func TestTralingStop(t *testing.T) {
+  // TODO
+}
