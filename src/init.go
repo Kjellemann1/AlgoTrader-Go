@@ -37,8 +37,6 @@ func init() {
   constant.DB_USER = os.Getenv("DBUser")
   constant.DB_PASSWORD = os.Getenv("DBPassword")
   constant.DB_NAME = os.Getenv("DBDatabase")
-  constant.DB_HOST = os.Getenv("DBHost")
-  constant.DB_PORT = os.Getenv("DBPort")
 
   if constant.KEY == "" || constant.SECRET == "" {
     log.Panicln("Missing PaperKey or PaperSecret")

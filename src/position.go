@@ -58,7 +58,7 @@ func NewPosition(symbol string) *Position {
 func (p *Position) LogOpen() *Query {
   util.Open(util.AddWhitespace(p.Symbol, 10) + "\t" + p.StratName)
 
-  return &Query{
+  query := &Query{
     Action: "open",
     PositionID: p.PositionID,
     Symbol: p.Symbol,
@@ -71,10 +71,18 @@ func (p *Position) LogOpen() *Query {
     ReceivedTime: p.OpenPriceReceivedTime,
     TriggerTime: p.OpenTriggerTime,
     TriggerPrice: p.OpenTriggerPrice,
-    FillTime: p.OpenFillTime,
     FilledAvgPrice: p.OpenFilledAvgPrice,
     BadForAnalysis: p.BadForAnalysis,
   }
+
+  fill_time := p.OpenFillTime
+  if fill_time.IsZero() {
+    query.FillTime = nil
+  } else {
+    query.FillTime = &fill_time
+  }
+
+  return query
 }
 
 func (p *Position) LogClose() *Query {
@@ -89,7 +97,7 @@ func (p *Position) LogClose() *Query {
 
   p.NCloseOrders++
 
-  return &Query{
+  query := &Query{
     Action: "close",
     PositionID: p.PositionID,
     Symbol: p.Symbol,
@@ -102,9 +110,17 @@ func (p *Position) LogClose() *Query {
     ReceivedTime: p.ClosePriceReceivedTime,
     TriggerTime: p.CloseTriggerTime,
     TriggerPrice: p.CloseTriggerPrice,
-    FillTime: p.CloseFillTime,
     FilledAvgPrice: p.CloseFilledAvgPrice,
     BadForAnalysis: p.BadForAnalysis,
     NCloseOrders: p.NCloseOrders,
   }
+
+  fill_time := p.CloseFillTime
+  if fill_time.IsZero() {
+    query.FillTime = nil
+  } else {
+    query.FillTime = &fill_time
+  }
+
+  return query
 }
