@@ -53,8 +53,8 @@ func shutdownHandler(wg *sync.WaitGroup, marketCancel context.CancelFunc, accoun
     sig := <-sigChan
     NNP.NoNewPositionsTrue("Run")
     log.Printf("Received signal: %v\n", sig)
-    fmt.Println("What do you want to do?")
     fmt.Printf("  -> 1) Abort\n  -> 2) Save state and shutdown\n  -> 3) Close all positions and shutdown\n")
+    fmt.Printf("Enter choice: ")
     var input string
     _, _ = fmt.Scanln(&input)
 
@@ -68,10 +68,11 @@ func shutdownHandler(wg *sync.WaitGroup, marketCancel context.CancelFunc, accoun
       marketCancel()
       stallIfOrdersPending(assets)
       accountCancel()
+      db_chan <- &Query{Action: "save_state"}
       db_chan <- nil
       return
     case "3":
-      fmt.Println("ARE YOU SURE YOU WANT TO CLOSE ALL POSITIONS? (y/n)")
+      fmt.Printf("ARE YOU SURE YOU WANT TO CLOSE ALL POSITIONS? (y/n): ")
       _, _ = fmt.Scanln(&input)
 
       switch input {
@@ -80,10 +81,12 @@ func shutdownHandler(wg *sync.WaitGroup, marketCancel context.CancelFunc, accoun
         request.CloseAllPositions(2, 0)
         marketCancel()
         accountCancel()
-        fmt.Println("Do you want to clear the positions table? (y/n)")
+        fmt.Printf("Do you want to clear the positions table? (y/n): ")
         _, _ = fmt.Scanln(&input)
         if input == "Y" || input == "y" {
           db_chan <- &Query{Action: "delete_all_positions"}
+        } else {
+          db_chan <- &Query{Action: "save_state"}
         }
         db_chan <- nil
         return

@@ -253,6 +253,9 @@ func (db *Database) queryHandler(query *Query, backoff_sec float64, retries int)
     case "delete_all_positions":
       db.deleteAllPositions(backoff_sec, retries)
 
+    case "save_state":
+      db.saveState()
+
     default:
       util.Error(errors.New("Invalid query type"), "Query", query)
   }
@@ -405,6 +408,4 @@ func (db *Database) start(wg *sync.WaitGroup) {
   }
 
   db.listen()
-
-  db.saveState()
 }

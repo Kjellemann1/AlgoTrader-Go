@@ -290,24 +290,28 @@ func (a *Asset) s(arr *[]float64, from int, to int) (slice []float64) {
 }
 
 func (a *Asset) openChecks(strat_name string, trigger_time time.Time) bool {
+  if NNP.Flag {
+    return false
+  }
+
   if _, ok := a.Positions[strat_name]; ok {
     return false
   }
+
   if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
     log.Printf("[ CANCEL ]\t%s\t%s\tReceived time diff",
       util.AddWhitespace(a.Symbol, 10), strat_name,
     )
     return false
   } 
+
   if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF_MS {
     log.Printf("[ CANCEL ]\t%s\t%s\tTrigger time diff",
       util.AddWhitespace(a.Symbol, 10), strat_name,
     )
     return false
   }
-  if NNP.Flag {
-    return false
-  }
+
   return true
 }
 
