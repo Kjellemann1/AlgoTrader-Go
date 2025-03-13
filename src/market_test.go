@@ -1,7 +1,6 @@
 package main
 
 import (
-  "errors"
   "testing"
   "net/http"
   "net/http/httptest"
@@ -76,10 +75,10 @@ func TestMarketReconnect(t *testing.T) {
     go mockServerMarket(urlChan, msgchan, &rootWg, signalChan)
 
     m := NewMarket("stock", <-urlChan, assets)
-    m.pingPong = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan error) {
+    m.pingPong = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan int8) {
       defer wg.Done()
       <-signalChan
-      err_chan <- errors.New("mockPingPong")
+      err_chan <-1
     }
 
     assert.Panics(t, func() { m.start(&xWg, rootCtx, 0) }, "Expected panic after server close")
@@ -92,7 +91,7 @@ func TestMarketReconnect(t *testing.T) {
     for range msgchan {
       subMsgCount++
     }
- 
+
     assert.Equal(t, 2, subMsgCount)
   })
 
@@ -114,10 +113,10 @@ func TestMarketReconnect(t *testing.T) {
     go mockServerMarket(urlChan, msgchan, &rootWg, signalChan)
 
     m := NewMarket("stock", <-urlChan, assets)
-    m.listen = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan error) {
+    m.listen = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan int8) {
       defer wg.Done()
       <-signalChan
-      err_chan <- errors.New("mockListen")
+      err_chan <-1
     }
 
     assert.Panics(t, func() { m.start(&xWg, rootCtx, 0) }, "Expected panic after server close")

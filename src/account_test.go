@@ -1,7 +1,6 @@
 package main
 
 import (
-  "errors"
   "testing"
   "net/http"
   "net/http/httptest"
@@ -82,10 +81,10 @@ func TestAccountReconnect(t *testing.T) {
 
 
     a := NewAccount(assets, <-urlChan, db_chan)
-    a.pingPong = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan error) {
+    a.pingPong = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan int8) {
       defer wg.Done()
       <-signalChan
-      err_chan <- errors.New("mockPingPong")
+      err_chan <-1
     }
 
     var wg sync.WaitGroup
@@ -119,10 +118,10 @@ func TestAccountReconnect(t *testing.T) {
     go mockServerAccount(urlChan, msgChan, &rootWg, signalChan)
 
     a := NewAccount(assets, <-urlChan, db_chan)
-    a.pingPong = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan error) {
+    a.pingPong = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan int8) {
       defer wg.Done()
       <-signalChan
-      err_chan <- errors.New("mockPingPong")
+      err_chan <-1
     }
 
     var wg sync.WaitGroup

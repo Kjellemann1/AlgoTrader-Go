@@ -28,8 +28,8 @@ type Market struct {
   url               string
   worker_pool_chan  chan MarketMessage
 
-  listen            func(ctx context.Context, wg *sync.WaitGroup, err_chan chan error)
-  pingPong          func(ctx context.Context, wg *sync.WaitGroup, err_chan chan error)
+  listen            func(ctx context.Context, wg *sync.WaitGroup, err_chan chan int8)
+  pingPong          func(ctx context.Context, wg *sync.WaitGroup, err_chan chan int8)
 }
 
 func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Market) {
@@ -206,7 +206,7 @@ func (m *Market) subscribe() (err error) {
   return
 }
 
-func (m *Market) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+func (m *Market) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan int8) {
   defer connWg.Done()
   if err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
     util.Warning(err)
@@ -230,14 +230,17 @@ func (m *Market) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_c
         websocket.PingMessage, []byte("ping"),
         time.Now().Add(5 * time.Second)); err != nil {
         util.Error(err)
-        err_chan <- err
+        select {
+        case err_chan <-1:
+        default:
+        }
         return
       }
     }
   }
 }
 
-func (m *Market) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+func (m *Market) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan int8) {
   defer connWg.Done()
   for {
     _, message, err := m.conn.ReadMessage()
@@ -248,7 +251,10 @@ func (m *Market) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_cha
         return
       default:
         util.Error(err)
-        err_chan <- err
+        select {
+        case err_chan <-1:
+        default:
+        }
         return
       }
     }
@@ -289,7 +295,7 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min 
     backoff_sec = backoff_sec_min
     retries = 0
 
-    err_chan := make(chan error, 1)
+    err_chan := make(chan int8)
     childCtx, cancel := context.WithCancel(ctx)
 
     var connWg sync.WaitGroup
@@ -303,13 +309,13 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min 
     select {
     case <-ctx.Done():
       cancel()
-      m.conn.Close()
       connWg.Wait()
+      m.conn.Close()
       return
     case <-err_chan:
       cancel()
-      m.conn.Close()
       connWg.Wait()
+      m.conn.Close()
     }
   }
 }

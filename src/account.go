@@ -36,8 +36,8 @@ type Account struct {
   assets  map[string]map[string]*Asset
   url     string
 
-  listen func(context.Context, *sync.WaitGroup, chan error)
-  pingPong func(context.Context, *sync.WaitGroup, chan error)
+  listen func(context.Context, *sync.WaitGroup, chan int8)
+  pingPong func(context.Context, *sync.WaitGroup, chan int8)
 }
 
 func NewAccount(assets map[string]map[string]*Asset, url string, db_chan chan *Query) *Account {
@@ -138,7 +138,7 @@ func (a *Account) connect() (err error) {
   return nil
 }
 
-func (a *Account) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+func (a *Account) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan int8) {
   defer connWg.Done()
 
   if err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
@@ -166,14 +166,17 @@ func (a *Account) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_
         websocket.PingMessage, []byte("ping"), 
         time.Now().Add(5 * time.Second)); err != nil {
         util.Error(err)
-        err_chan <-err
+        select {
+        case err_chan <-1:
+        default:
+        }
         return
       }
     }
   }
 }
 
-func (a *Account) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan error) {
+func (a *Account) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan int8) {
   defer connWg.Done()
   for {
     _, message, err := a.conn.ReadMessage()
@@ -183,7 +186,10 @@ func (a *Account) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_ch
         return
       default:
         util.Error(err)
-        err_chan <-err
+        select {
+        case err_chan <-1:
+        default:
+        }
         return
       }
     }
@@ -215,7 +221,7 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min
     backoff_sec = backoff_sec_min
     retries = 0
 
-    err_chan := make(chan error, 1)
+    err_chan := make(chan int8, 1)
     childCtx, cancel := context.WithCancel(ctx)
 
     a.checkPending()
@@ -231,13 +237,13 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min
     select {
     case <-ctx.Done():
       cancel()
-      a.conn.Close()
       connWg.Wait()
+      a.conn.Close()
       return
     case <-err_chan:
       cancel()
-      a.conn.Close()
       connWg.Wait()
+      a.conn.Close()
     }
   }
 }

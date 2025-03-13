@@ -278,48 +278,6 @@ func (db *Database) connect() {
   }
 }
 
-func (db *Database) Start(wg *sync.WaitGroup) {
-  defer wg.Done()
-
-  db.connect()
-  defer db.conn.Close()
-
-  db.retrieveState()
-
-  err := db.prepQueries()
-  if err != nil {
-    log.Panicf("[ ERROR ]\tsetupQueries() failed: %s\n", err.Error())
-  }
-
-  db.listen()
-
-  db.storeTrailingStopBases()
-}
-
-func (db *Database) storeTrailingStopBases() {
-  globRwm.Lock()
-  defer globRwm.Unlock()
-
-  update, err := db.conn.Prepare(`
-    UPDATE positions SET trailing_stop = ? WHERE symbol = ? AND strat_name = ?;
-  `)
-  if err != nil {
-    util.Error(err)
-    return
-  }
-
-  for _, asset_class := range db.assets {
-    for _, asset := range asset_class {
-      for _, pos := range asset.Positions {
-        resp, err := update.Exec(pos.TrailingStopBase, pos.Symbol, pos.StratName)
-        if err != nil {
-          util.Error(err, "Response", resp)
-        }
-      }
-    }
-  }
-}
-
 func (db *Database) retrieveState() {
   // TODO: Check that retrieved qtys match server qtys
   globRwm.Lock()
@@ -337,7 +295,7 @@ func (db *Database) retrieveState() {
       qty decimal.Decimal
       triggerPrice, filledAvgPrice, trailingStopBase float64
       priceTime, receivedTime, triggerTime, fillTime time.Time
-      badForAnalysis bool
+      badForAnalysis, openOrderPending, closeOrderPending bool
       nCloseOrders int8
     )
 
@@ -359,6 +317,8 @@ func (db *Database) retrieveState() {
       &badForAnalysis,
       &receivedTime,
       &nCloseOrders,
+      &openOrderPending,
+      &closeOrderPending,
     )
     if err != nil {
       util.ErrorPanic(err)
@@ -375,7 +335,7 @@ func (db *Database) retrieveState() {
       Qty: qty,
       BadForAnalysis: badForAnalysis,
       PositionID: positionID,
-      OpenOrderPending: false,
+      OpenOrderPending: openOrderPending,
       OpenTriggerTime: triggerTime,
       OpenSide: side,
       OpenOrderType: orderType,
@@ -384,7 +344,7 @@ func (db *Database) retrieveState() {
       OpenPriceReceivedTime: receivedTime,
       OpenFillTime: fillTime,
       OpenFilledAvgPrice: filledAvgPrice,
-      CloseOrderPending: false,
+      CloseOrderPending: closeOrderPending,
       NCloseOrders: nCloseOrders,
       TrailingStopBase: trailingStopBase,
     }
@@ -394,4 +354,55 @@ func (db *Database) retrieveState() {
   }
 
   util.Ok("State retrieved from database")
+}
+
+func (db *Database) saveState() {
+  globRwm.Lock()
+  defer globRwm.Unlock()
+
+  update, err := db.conn.Prepare(`
+    UPDATE positions SET
+      open_order_pending = ?, 
+      close_order_pending = ?,
+      trailing_stop = ?
+    WHERE symbol = ? AND strat_name = ?;
+  `)
+  if err != nil {
+    util.Error(err)
+    return
+  }
+
+  for _, asset_class := range db.assets {
+    for _, asset := range asset_class {
+      for _, pos := range asset.Positions {
+        resp, err := update.Exec(
+          pos.OpenOrderPending, 
+          pos.CloseOrderPending, 
+          pos.TrailingStopBase, 
+          pos.Symbol, pos.StratName,
+        )
+        if err != nil {
+          util.Error(err, "Response", resp)
+        }
+      }
+    }
+  }
+}
+
+func (db *Database) Start(wg *sync.WaitGroup) {
+  defer wg.Done()
+
+  db.connect()
+  defer db.conn.Close()
+
+  db.retrieveState()
+
+  err := db.prepQueries()
+  if err != nil {
+    log.Panicf("[ ERROR ]\tsetupQueries() failed: %s\n", err.Error())
+  }
+
+  db.listen()
+
+  db.saveState()
 }
