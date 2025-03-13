@@ -1,6 +1,7 @@
 package main
 
 import (
+  "fmt"
   "testing"
   "net/http"
   "net/http/httptest"
@@ -25,7 +26,7 @@ func (c *mockMarketConn) read() string {
   return string(msg)
 }
 
-func mockServerMarket (urlChan chan string, msgChan chan string, rootWg *sync.WaitGroup, signalChan chan int8) {
+func mockServerMarket (test bool, urlChan chan string, msgChan chan string, rootWg *sync.WaitGroup, signalChan chan int8) {
   defer rootWg.Done()
   var wg sync.WaitGroup
   wg.Add(3)  // wg = 3 since wg.Done() should be called 3 times due to reconnect
@@ -36,7 +37,7 @@ func mockServerMarket (urlChan chan string, msgChan chan string, rootWg *sync.Wa
     conn := mockMarketConn{ws}
     defer conn.Close()
     if iter == 1 {
-      conn.write(`[{"T":"error","msg":"mockPingPong"}]`)
+      conn.write(`[{"T":"error","msg":"mockError"}]`)
     } else {
       conn.write(`[{"T":"success","msg":"connected"}]`)
       conn.write(`[{"T":"success","msg":"authenticated"}]`)
@@ -46,6 +47,7 @@ func mockServerMarket (urlChan chan string, msgChan chan string, rootWg *sync.Wa
     }
     iter++
     wg.Done()
+    if test { fmt.Println("Done", iter) }
     select {}  // Block forever to keep connection open
   }))
   defer server.Close()
@@ -73,10 +75,10 @@ func TestMarketReconnect(t *testing.T) {
     var xWg sync.WaitGroup
     xWg.Add(1)
 
-    go mockServerMarket(urlChan, msgchan, &rootWg, signalChan)
+    go mockServerMarket(false, urlChan, msgchan, &rootWg, signalChan)
 
     m := NewMarket("stock", <-urlChan, assets)
-    m.pingPong = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan int8) {
+    m.pingPong = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
       defer wg.Done()
       <-signalChan
       err_chan <-1
@@ -108,19 +110,19 @@ func TestMarketReconnect(t *testing.T) {
     var rootWg sync.WaitGroup
     rootWg.Add(1)
 
-    var xWg sync.WaitGroup
-    xWg.Add(1)
 
-    go mockServerMarket(urlChan, msgchan, &rootWg, signalChan)
+    go mockServerMarket(true, urlChan, msgchan, &rootWg, signalChan)
 
     m := NewMarket("stock", <-urlChan, assets)
-    m.listen = func(ctx context.Context, wg *sync.WaitGroup, err_chan chan int8) {
+    m.listen = func(wg *sync.WaitGroup, err_chan chan int8) {
       defer wg.Done()
       <-signalChan
       err_chan <-1
     }
 
-    assert.Panics(t, func() { m.start(&xWg, rootCtx, 0) }, "Expected panic after server close")
+    var wg sync.WaitGroup
+    wg.Add(1)
+    assert.Panics(t, func() { m.start(&wg, rootCtx, 0) }, "Expected panic after server close")
     rootCancel()
 
     rootWg.Wait()

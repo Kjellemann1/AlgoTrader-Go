@@ -56,10 +56,18 @@ func NewPosition(symbol string) *Position {
   }
 }
 
+func checkTimeNil(t time.Time) *time.Time {
+  if t.IsZero() {
+    return nil
+  } else {
+    return &t
+  }
+}
+
 func (p *Position) LogOpen() *Query {
   util.Open(util.AddWhitespace(p.Symbol, 10) + "\t" + p.StratName)
 
-  query := &Query{
+  return &Query{
     Action: "open",
     PositionID: p.PositionID,
     Symbol: p.Symbol,
@@ -68,22 +76,14 @@ func (p *Position) LogOpen() *Query {
     StratName: p.StratName,
     OrderType: p.OpenOrderType,
     Qty: p.Qty,
-    PriceTime: p.OpenPriceTime,
-    ReceivedTime: p.OpenPriceReceivedTime,
-    TriggerTime: p.OpenTriggerTime,
+    PriceTime: checkTimeNil(p.OpenPriceTime),
+    ReceivedTime: checkTimeNil(p.OpenPriceReceivedTime),
+    TriggerTime: checkTimeNil(p.OpenTriggerTime),
+    FillTime: checkTimeNil(p.OpenFillTime),
     TriggerPrice: p.OpenTriggerPrice,
     FilledAvgPrice: p.OpenFilledAvgPrice,
     BadForAnalysis: p.BadForAnalysis,
   }
-
-  fill_time := p.OpenFillTime
-  if fill_time.IsZero() {
-    query.FillTime = nil
-  } else {
-    query.FillTime = &fill_time
-  }
-
-  return query
 }
 
 func (p *Position) LogClose() *Query {
@@ -98,7 +98,7 @@ func (p *Position) LogClose() *Query {
 
   p.NCloseOrders++
 
-  query := &Query{
+  return &Query{
     Action: "close",
     PositionID: p.PositionID,
     Symbol: p.Symbol,
@@ -107,21 +107,13 @@ func (p *Position) LogClose() *Query {
     StratName: p.StratName,
     OrderType: p.CloseOrderType,
     Qty: p.Qty,
-    PriceTime: p.ClosePriceTime,
-    ReceivedTime: p.ClosePriceReceivedTime,
-    TriggerTime: p.CloseTriggerTime,
+    PriceTime: checkTimeNil(p.ClosePriceTime),
+    ReceivedTime: checkTimeNil(p.ClosePriceReceivedTime),
+    TriggerTime: checkTimeNil(p.CloseTriggerTime),
+    FillTime: checkTimeNil(p.CloseFillTime),
     TriggerPrice: p.CloseTriggerPrice,
     FilledAvgPrice: p.CloseFilledAvgPrice,
     BadForAnalysis: p.BadForAnalysis,
     NCloseOrders: p.NCloseOrders,
   }
-
-  fill_time := p.CloseFillTime
-  if fill_time.IsZero() {
-    query.FillTime = nil
-  } else {
-    query.FillTime = &fill_time
-  }
-
-  return query
 }

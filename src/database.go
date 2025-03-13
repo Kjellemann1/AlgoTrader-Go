@@ -24,16 +24,16 @@ type Query struct {
   StratName         string
   OrderType         string
   Qty               decimal.Decimal
-  PriceTime         time.Time
-  ReceivedTime      time.Time
-  TriggerTime       time.Time
   TriggerPrice      float64
-  FillTime          *time.Time
   FilledAvgPrice    float64
   TrailingStop      float64
   BadForAnalysis    bool
   TrailingStopPrice float64
   NCloseOrders      int8
+  PriceTime         *time.Time
+  ReceivedTime      *time.Time
+  TriggerTime       *time.Time
+  FillTime          *time.Time
 }
 
 type Database struct {

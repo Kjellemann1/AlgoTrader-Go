@@ -25,8 +25,8 @@ type Account struct {
   assets  map[string]map[string]*Asset
   url     string
 
-  listen func(context.Context, *sync.WaitGroup, chan int8)
-  pingPong func(context.Context, *sync.WaitGroup, chan int8)
+  listen func(*sync.WaitGroup, chan int8)
+  pingPong func(*sync.WaitGroup, context.Context, chan int8)
 }
 
 func NewAccount(assets map[string]map[string]*Asset, url string, db_chan chan *Query) *Account {
@@ -127,7 +127,7 @@ func (a *Account) connect() (err error) {
   return nil
 }
 
-func (a *Account) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan int8) {
+func (a *Account) pingPongFunc(connWg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
   defer connWg.Done()
 
   if err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
@@ -154,10 +154,10 @@ func (a *Account) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_
       if err := a.conn.WriteControl(
         websocket.PingMessage, []byte("ping"), 
         time.Now().Add(5 * time.Second)); err != nil {
-        util.Error(err)
         select {
-        case <-ctx.Done():
         case err_chan <-1:
+          util.Error(err)
+        default:
         }
         return
       }
@@ -165,23 +165,20 @@ func (a *Account) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_
   }
 }
 
-func (a *Account) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan int8) {
+func (a *Account) listenFunc(connWg *sync.WaitGroup, err_chan chan int8) {
   defer connWg.Done()
+
   for {
     _, message, err := a.conn.ReadMessage()
     if err != nil {
       select {
-      case <-ctx.Done():
-        return
-      default:
+      case err_chan <-1:
         util.Error(err)
-        select {
-        case <-ctx.Done():
-        case err_chan <-1:
-        }
-        return
+      default:
       }
+      return
     }
+
     _ = a.messageHandler(message)
   }
 }
@@ -210,18 +207,18 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min
     backoff_sec = backoff_sec_min
     retries = 0
 
-    err_chan := make(chan int8, 1)
-    childCtx, cancel := context.WithCancel(ctx)
+    err_chan := make(chan int8)
 
     a.checkPending()
 
     var connWg sync.WaitGroup
 
     connWg.Add(1)
-    go a.listen(childCtx, &connWg, err_chan)
+    go a.listen(&connWg, err_chan)
 
+    context, cancel := context.WithCancel(ctx)
     connWg.Add(1)
-    go a.pingPong(childCtx, &connWg, err_chan)
+    go a.pingPong(&connWg, context, err_chan)
 
     select {
     case <-ctx.Done():
