@@ -66,19 +66,23 @@ func (m *Market) checkAllSymbolsInSubscription(element *fastjson.Value) {
   for s := range m.assets {
     symbols = append(symbols, s)
   }
+
   var subs = make(map[string][]string)
   for _, sub_type := range []string{"bars", "trades"} {
     fj_array := element.GetArray(sub_type)
     subs[sub_type] = make([]string, len(fj_array))
+
     for i, fj_symbol := range fj_array {
       subs[sub_type][i] = string(fj_symbol.GetStringBytes())
     }
+
     for _, symbol := range subs[sub_type] {
       if !slices.Contains(symbols, symbol) {
         log.Panicln("Missing symbol in subscription", symbol)
       }
     }
   }
+
   util.Ok(fmt.Sprintf("All symbols present in websocket subscription for %s", m.asset_class))
 }
 

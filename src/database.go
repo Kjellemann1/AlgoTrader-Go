@@ -6,6 +6,7 @@ import (
   "log"
   "time"
   "errors"
+  "slices"
   "database/sql"
   _ "github.com/go-sql-driver/mysql"
   "github.com/shopspring/decimal"
@@ -235,9 +236,6 @@ func (db *Database) updateNCloseOrders(query *Query, backoff_sec float64, retrie
 }
 
 func (db *Database) queryHandler(query *Query, backoff_sec float64, retries int) {
-  // I am fairly certain the reason for fill_time being nil is
-  // that closed orders where not filled. But I added one for open orders
-  // as well to see if it happens there too.
   switch query.Action {
     case "open":
       db.insertTrade(query, backoff_sec, retries)
@@ -262,13 +260,11 @@ func (db *Database) queryHandler(query *Query, backoff_sec float64, retries int)
 
 func (db *Database) listen() {
   util.Ok("Database listening")
-
   for {
     query := <-db.db_chan
     if query == nil {
       return
     }
-
     db.queryHandler(query, 5, 0)
   }
 }
@@ -365,9 +361,11 @@ func (db *Database) retrieveState() {
       &nCloseOrders,
     )
     if err != nil {
-      util.Error(err, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
-      request.CloseAllPositions(2, 0)
-      log.Panicln("SHUTTING DOWN")
+      util.ErrorPanic(err)
+    }
+
+    if !( slices.Contains(constant.CRYPTO_SYMBOLS, symbol) || slices.Contains(constant.STOCK_SYMBOLS, symbol) ) {
+      util.ErrorPanic(errors.New("Symbol of retrieved position not in subscription list"))
     }
 
     db.assets[assetClass][symbol].Positions[stratName] = &Position{
