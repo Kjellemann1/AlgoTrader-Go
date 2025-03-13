@@ -208,6 +208,7 @@ func (m *Market) subscribe() (err error) {
 
 func (m *Market) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan int8) {
   defer connWg.Done()
+
   if err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
     util.Warning(err)
   }
@@ -221,6 +222,7 @@ func (m *Market) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_c
   ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
   util.Ok(fmt.Sprintf("PingPong initiated for %s market websocket", m.asset_class))
+
   for {
     select {
     case <-ctx.Done():
@@ -231,8 +233,8 @@ func (m *Market) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_c
         time.Now().Add(5 * time.Second)); err != nil {
         util.Error(err)
         select {
+        case <-ctx.Done():
         case err_chan <-1:
-        default:
         }
         return
       }
@@ -242,6 +244,7 @@ func (m *Market) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_c
 
 func (m *Market) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_chan chan int8) {
   defer connWg.Done()
+
   for {
     _, message, err := m.conn.ReadMessage()
     received_time := time.Now().UTC()
@@ -252,12 +255,13 @@ func (m *Market) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_cha
       default:
         util.Error(err)
         select {
+        case <-ctx.Done():
         case err_chan <-1:
-        default:
         }
         return
       }
     }
+
     m.worker_pool_chan <- MarketMessage{message, received_time}
   }
 }
@@ -309,13 +313,13 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min 
     select {
     case <-ctx.Done():
       cancel()
-      connWg.Wait()
       m.conn.Close()
+      connWg.Wait()
       return
     case <-err_chan:
       cancel()
-      connWg.Wait()
       m.conn.Close()
+      connWg.Wait()
     }
   }
 }

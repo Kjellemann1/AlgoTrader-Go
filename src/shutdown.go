@@ -5,6 +5,7 @@ import (
   "log"
   "fmt"
   "time"
+  "sync"
   "os/signal"
   "syscall"
   "context"
@@ -42,7 +43,8 @@ func stallIfOrdersPending(assets map[string]map[string]*Asset) {
   }
 }
 
-func shutdownHandler(marketCancel context.CancelFunc, accountCancel context.CancelFunc, assets map[string]map[string]*Asset, db_chan chan *Query) {
+func shutdownHandler(wg *sync.WaitGroup, marketCancel context.CancelFunc, accountCancel context.CancelFunc, assets map[string]map[string]*Asset, db_chan chan *Query) {
+  defer wg.Done()
   sigChan := make(chan os.Signal, 1)
   defer close(sigChan)
   signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

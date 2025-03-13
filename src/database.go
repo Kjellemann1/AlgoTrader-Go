@@ -387,9 +387,11 @@ func (db *Database) saveState() {
       }
     }
   }
+
+  util.Ok("State saved to database")
 }
 
-func (db *Database) Start(wg *sync.WaitGroup) {
+func (db *Database) start(wg *sync.WaitGroup) {
   defer wg.Done()
 
   db.connect()

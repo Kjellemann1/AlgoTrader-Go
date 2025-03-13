@@ -46,6 +46,7 @@ func mockServerMarket (urlChan chan string, msgChan chan string, rootWg *sync.Wa
     }
     iter++
     wg.Done()
+    select {}  // Block forever to keep connection open
   }))
   defer server.Close()
   urlChan <- "ws" + strings.TrimPrefix(server.URL, "http")

@@ -156,8 +156,8 @@ func (a *Account) pingPongFunc(ctx context.Context, connWg *sync.WaitGroup, err_
         time.Now().Add(5 * time.Second)); err != nil {
         util.Error(err)
         select {
+        case <-ctx.Done():
         case err_chan <-1:
-        default:
         }
         return
       }
@@ -176,8 +176,8 @@ func (a *Account) listenFunc(ctx context.Context, connWg *sync.WaitGroup, err_ch
       default:
         util.Error(err)
         select {
+        case <-ctx.Done():
         case err_chan <-1:
-        default:
         }
         return
       }
@@ -226,13 +226,13 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min
     select {
     case <-ctx.Done():
       cancel()
-      connWg.Wait()
       a.conn.Close()
+      connWg.Wait()
       return
     case <-err_chan:
       cancel()
-      connWg.Wait()
       a.conn.Close()
+      connWg.Wait()
     }
   }
 }

@@ -26,14 +26,16 @@ func main() {
   assets := prepAssetsMap()
   fillRollingWindows(assets)
 
-  go shutdownHandler(marketCancel, accountCancel, assets, db_chan)
+  wg.Add(1)
+  go shutdownHandler(&wg, marketCancel, accountCancel, assets, db_chan)
 
   wg.Add(1)
   db := NewDatabase(db_chan, assets)
-  go db.Start(&wg)
+  go db.start(&wg)
 
   wg.Add(1)
   a := NewAccount(assets, constant.WSS_ACCOUNT, db_chan)
+
   go a.start(&wg, accountCtx, 2)
 
   if _, ok := assets["stock"]; ok {
