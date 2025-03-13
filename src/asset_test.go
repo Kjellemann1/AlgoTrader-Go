@@ -197,17 +197,16 @@ func TestSumNoPendingPosQtys(t *testing.T) {
 func TestPriceDeviation(t *testing.T) {
   a := newAssetTesting()
   p := &a.C[constant.WINDOW_SIZE - 1]
-  a.Positions = make(map[string]*Position)
-  a.Positions["foo"] = &Position{OpenFilledAvgPrice: 100}
+  base_price := 100.0
 
   *p = 100
-  assert.Equal(t, 0.0, a.priceDeviation("foo"))
+  assert.Equal(t, 0.0, a.priceDeviation(base_price))
 
   *p = 101
-  assert.InDelta(t, 1.0, a.priceDeviation("foo"), 1e-9)
+  assert.InDelta(t, 1.0, a.priceDeviation(base_price), 1e-9)
 
   *p = 99
-  assert.InDelta(t, -1.0, a.priceDeviation("foo"), 1e-9)
+  assert.InDelta(t, -1.0, a.priceDeviation(base_price), 1e-9)
 }
 
 func TestStopLoss(t *testing.T) {
@@ -219,22 +218,22 @@ func TestStopLoss(t *testing.T) {
     accum+= 1
   }
 
-  a.stopLoss(5.0, "foo")
+  a.stopLoss(5, "foo")
   assert.Equal(t, 0, accum)
 
   a.Positions = make(map[string]*Position)
   a.Positions["foo"] = &Position{OpenFilledAvgPrice: 100}
 
   *p = 110
-  a.stopLoss(5.0, "foo")
+  a.stopLoss(5, "foo")
   assert.Equal(t, 0, accum)
 
   *p = 100
-  a.stopLoss(5.0, "foo")
+  a.stopLoss(5, "foo")
   assert.Equal(t, 0, accum)
 
   *p = 90
-  a.stopLoss(5.0, "foo")
+  a.stopLoss(5, "foo")
   assert.Equal(t, 1, accum)
 }
 
@@ -247,25 +246,49 @@ func TestTakeProfit(t *testing.T) {
     accum+= 1
   }
 
-  a.takeProfit(5.0, "foo")
+  a.takeProfit(5, "foo")
   assert.Equal(t, 0, accum)
 
   a.Positions = make(map[string]*Position)
   a.Positions["foo"] = &Position{OpenFilledAvgPrice: 100}
 
   *p = 90
-  a.takeProfit(5.0, "foo")
+  a.takeProfit(5, "foo")
   assert.Equal(t, 0, accum)
 
   *p = 100
-  a.takeProfit(5.0, "foo")
+  a.takeProfit(5, "foo")
   assert.Equal(t, 0, accum)
 
   *p = 110
-  a.takeProfit(5.0, "foo")
+  a.takeProfit(5, "foo")
   assert.Equal(t, 1, accum)
 }
 
-func TestTralingStop(t *testing.T) {
-  // TODO
+func TestTrailingStop(t *testing.T) {
+  var accum int
+
+  a := newAssetTesting()
+  p := &a.C[a.i(0)]
+  a.close = func(string, string) {
+    accum+= 1
+  }
+
+  a.trailingStop(5, "foo")
+  assert.Equal(t, 0, accum)
+
+  a.Positions = make(map[string]*Position)
+  a.Positions["foo"] = &Position{OpenFilledAvgPrice: 100}
+
+  *p = 100
+  a.trailingStop(5, "foo")
+  assert.Equal(t, 0, accum)
+
+  *p = 130
+  a.trailingStop(5, "foo")
+  assert.Equal(t, 0, accum)
+
+  *p = 110
+  a.trailingStop(5, "foo")
+  assert.Equal(t, 1, accum)
 }

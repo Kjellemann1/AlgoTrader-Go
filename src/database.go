@@ -41,13 +41,14 @@ type Database struct {
   insert_trade                  *sql.Stmt
   insert_position               *sql.Stmt
   delete_position               *sql.Stmt
-  update_trailing_stop          *sql.Stmt
   update_n_close_orders         *sql.Stmt
+  assets                        map[string]map[string]*Asset
 }
 
-func NewDatabase(db_chan chan *Query) (db *Database) {
+func NewDatabase(db_chan chan *Query, assets map[string]map[string]*Asset) (db *Database) {
   db = &Database{}
   db.db_chan = db_chan
+  db.assets = assets
   return
 }
 
@@ -103,13 +104,6 @@ func (db *Database) prepQueries() error {
 
   db.delete_position, err = db.conn.Prepare(`
     DELETE FROM positions WHERE symbol = ? AND strat_name = ?;
-  `)
-  if err != nil {
-    return err
-  }
-
-  db.update_trailing_stop, err = db.conn.Prepare(`
-    UPDATE positions SET trailing_stop = ? WHERE symbol = ? AND strat_name = ?;
   `)
   if err != nil {
     return err
@@ -233,13 +227,6 @@ func (db *Database) deletePosition(query *Query, backoff_sec float64, retries in
   }
 }
 
-func (db *Database) updateTrailingStop(query *Query, backoff_sec float64, retries int) {
-  response, err := db.update_trailing_stop.Exec(query.TrailingStopPrice, query.Symbol, query.StratName)
-  if err != nil {
-    db.errorHandler(err, "updateTrailingStop", response, query, retries, &backoff_sec)
-  }
-}
-
 func (db *Database) updateNCloseOrders(query *Query, backoff_sec float64, retries int) {
   response, err := db.update_n_close_orders.Exec(query.NCloseOrders, query.Symbol, query.StratName)
   if err != nil {
@@ -265,9 +252,6 @@ func (db *Database) queryHandler(query *Query, backoff_sec float64, retries int)
         db.deletePosition(query, backoff_sec, retries)
       }
 
-    case "update":
-      db.updateTrailingStop(query, backoff_sec, retries)
-
     case "delete_all_positions":
       db.deleteAllPositions(backoff_sec, retries)
 
@@ -282,7 +266,6 @@ func (db *Database) listen() {
   for {
     query := <-db.db_chan
     if query == nil {
-      db.conn.Close()
       return
     }
 
@@ -299,19 +282,48 @@ func (db *Database) connect() {
   }
 }
 
-func (db *Database) Start(wg *sync.WaitGroup, assets map[string]map[string]*Asset) {
+func (db *Database) Start(wg *sync.WaitGroup) {
   defer wg.Done()
+
   db.connect()
   defer db.conn.Close()
-  db.RetrieveState(assets)
+
+  db.retrieveState()
+
   err := db.prepQueries()
   if err != nil {
     log.Panicf("[ ERROR ]\tsetupQueries() failed: %s\n", err.Error())
   }
+
   db.listen()
+
+  db.storeTrailingStopBases()
 }
 
-func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
+func (db *Database) storeTrailingStopBases() {
+  globRwm.Lock()
+  defer globRwm.Unlock()
+
+  update, err := db.conn.Prepare(`
+    UPDATE positions SET trailing_stop = ? WHERE symbol = ? AND strat_name = ?;
+  `)
+  if err != nil {
+    util.Error(err)
+  }
+
+  for _, asset_class := range db.assets {
+    for _, asset := range asset_class {
+      for _, pos := range asset.Positions {
+        resp, err := update.Exec(pos.TrailingStopBase, pos.Symbol, pos.StratName)
+        if err != nil {
+          util.Error(err, "Response", resp)
+        }
+      }
+    }
+  }
+}
+
+func (db *Database) retrieveState() {
   // TODO: Check that retrieved qtys match server qtys
   globRwm.Lock()
   defer globRwm.Unlock()
@@ -326,7 +338,7 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
     var (
       positionID, symbol, assetClass, side, stratName, orderType string
       qty decimal.Decimal
-      triggerPrice, filledAvgPrice, trailingStop float64
+      triggerPrice, filledAvgPrice, trailingStopBase float64
       priceTime, receivedTime, triggerTime, fillTime time.Time
       badForAnalysis bool
       nCloseOrders int8
@@ -346,7 +358,7 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       &triggerPrice,
       &fillTime,
       &filledAvgPrice,
-      &trailingStop,
+      &trailingStopBase,
       &badForAnalysis,
       &receivedTime,
       &nCloseOrders,
@@ -357,7 +369,7 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       log.Panicln("SHUTTING DOWN")
     }
 
-    assets[assetClass][symbol].Positions[stratName] = &Position{
+    db.assets[assetClass][symbol].Positions[stratName] = &Position{
       Symbol: symbol,
       AssetClass: assetClass,
       StratName: stratName,
@@ -375,9 +387,10 @@ func (db *Database) RetrieveState(assets map[string]map[string]*Asset) {
       OpenFilledAvgPrice: filledAvgPrice,
       CloseOrderPending: false,
       NCloseOrders: nCloseOrders,
+      TrailingStopBase: trailingStopBase,
     }
 
-    assets[assetClass][symbol].Qty = assets[assetClass][symbol].Qty.Add(qty)
+    db.assets[assetClass][symbol].Qty = db.assets[assetClass][symbol].Qty.Add(qty)
     log.Printf("[ INFO ]\tRetrieved position: %s %s %s", symbol, stratName, qty.String())
   }
 

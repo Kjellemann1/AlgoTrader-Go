@@ -40,6 +40,7 @@ type Position struct {
   ClosePriceReceivedTime time.Time
 
   NCloseOrders           int8
+  TrailingStopBase       float64
 
   Rwm                    sync.RWMutex
 }

@@ -29,8 +29,8 @@ func main() {
   go shutdownHandler(marketCancel, accountCancel, assets, db_chan)
 
   wg.Add(1)
-  db := NewDatabase(db_chan)
-  go db.Start(&wg, assets)
+  db := NewDatabase(db_chan, assets)
+  go db.Start(&wg)
 
   wg.Add(1)
   a := NewAccount(assets, constant.WSS_ACCOUNT, db_chan)

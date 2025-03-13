@@ -444,13 +444,10 @@ func (a *Asset) closeFunc(order_type string, strat_name string) {
   a.sendClose(strat_name, open_side, order_type, position_id, symbol, qty)
 }
 
-func (a *Asset) priceDeviation(strat_name string) float64 {
-  fill_price := a.Positions[strat_name].OpenFilledAvgPrice
-
+func (a *Asset) priceDeviation(fill_price float64) float64 {
   if fill_price == 0 {
     return 0
   }
-
   return (a.C[a.i(0)] / fill_price - 1) * 100
 }
 
@@ -461,7 +458,7 @@ func (a *Asset) stopLoss(percent float64, strat_name string) {
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
-  if a.priceDeviation(strat_name) < (percent * -1) {
+  if a.priceDeviation(a.Positions[strat_name].OpenFilledAvgPrice) < (percent * -1) {
     a.close("IOC", strat_name)
     log.Printf("[ INFO ]\t%s\t%s\tStopLoss", a.Symbol, strat_name)
   }
@@ -474,13 +471,26 @@ func (a *Asset) takeProfit(percent float64, strat_name string) {
   if _, ok := a.Positions[strat_name]; !ok {
     return
   }
-  if a.priceDeviation(strat_name) > percent {
+  if a.priceDeviation(a.Positions[strat_name].OpenFilledAvgPrice) > percent {
     a.close("IOC", strat_name)
     log.Printf("[ INFO ]\t%s\t%s\tTakeProfit", a.Symbol, strat_name)
   }
 }
 
-func (a *Asset) trailingStop() {
-  // TODO
-  log.Println("[ INFO ]\tTrailingStop not implemented")
+func (a *Asset) trailingStop(percent float64, strat_name string) {
+  if _, ok := a.Positions[strat_name]; !ok {
+    return
+  }
+  pos := a.Positions[strat_name]
+
+  p := a.C[a.i(0)]
+  if p > pos.TrailingStopBase {
+    pos.TrailingStopBase = p
+    return
+  }
+
+  if a.priceDeviation(pos.TrailingStopBase) < (percent * -1) {
+    a.close("IOC", strat_name)
+    log.Printf("[ INFO ]\t%s\t%s\tTrailingStop", a.Symbol, strat_name)
+  }
 }
