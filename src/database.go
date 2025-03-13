@@ -309,6 +309,7 @@ func (db *Database) storeTrailingStopBases() {
   `)
   if err != nil {
     util.Error(err)
+    return
   }
 
   for _, asset_class := range db.assets {
