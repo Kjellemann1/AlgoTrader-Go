@@ -61,10 +61,10 @@ func shutdownHandler(wg *sync.WaitGroup, marketCancel context.CancelFunc, accoun
     switch input {
     case "1":
       NNP.NoNewPositionsFalse("Run")
-      log.Println("Shutdown aborted. Resuming ...")
+      log.Println("Shutdown aborted. Resuming...")
       continue
     case "2":
-      log.Println("Saving state and shutting down ...")
+      log.Println("Saving state and shutting down...")
       marketCancel()
       stallIfOrdersPending(assets)
       accountCancel()
@@ -72,7 +72,7 @@ func shutdownHandler(wg *sync.WaitGroup, marketCancel context.CancelFunc, accoun
       db_chan <- nil
       return
     case "3":
-      fmt.Printf("ARE YOU SURE YOU WANT TO CLOSE ALL POSITIONS? (y/n): ")
+      fmt.Printf("Are you sure you want to CLOSE ALL POSITIONS? (y/n): ")
       _, _ = fmt.Scanln(&input)
 
       switch input {
