@@ -261,28 +261,22 @@ func (db *Database) queryHandler(query *Query, backoff_sec float64, retries int)
   }
 }
 
-func (db *Database) listen() {
-  util.Ok("Database listening")
-  for {
-    query := <-db.db_chan
-    if query == nil {
-      return
-    }
-    db.queryHandler(query, 5, 0)
-  }
-}
-
-func (db *Database) connect() {
-  url := fmt.Sprintf("%s:%s@/%s?parseTime=true", constant.DB_USER, constant.DB_PASSWORD, constant.DB_NAME)
-  var err error
-  db.conn , err = sql.Open("mysql", url)
+func (db *Database) checkQtysMatch() {
+  qtys, err := request.GetAssetQtys()
   if err != nil {
-    log.Panicln(err.Error())
+    util.ErrorPanic(err)
+  }
+
+  for _, asset_class := range db.assets {
+    for _, asset := range asset_class {
+      if asset.Qty.Cmp(qtys[asset.Symbol]) != 0 {
+        util.ErrorPanic(errors.New("Database qty does not match server qty"))
+      }
+    }
   }
 }
 
 func (db *Database) retrieveState() {
-  // TODO: Check that retrieved qtys match server qtys
   globRwm.Lock()
   defer globRwm.Unlock()
 
@@ -356,6 +350,8 @@ func (db *Database) retrieveState() {
     log.Printf("[ INFO ]\tRetrieved position: %s %s %s", symbol, stratName, qty.String())
   }
 
+  db.checkQtysMatch()
+
   util.Ok("State retrieved from database")
 }
 
@@ -392,6 +388,26 @@ func (db *Database) saveState() {
   }
 
   util.Ok("State saved to database")
+}
+
+func (db *Database) listen() {
+  util.Ok("Database listening")
+  for {
+    query := <-db.db_chan
+    if query == nil {
+      return
+    }
+    db.queryHandler(query, 5, 0)
+  }
+}
+
+func (db *Database) connect() {
+  url := fmt.Sprintf("%s:%s@/%s?parseTime=true", constant.DB_USER, constant.DB_PASSWORD, constant.DB_NAME)
+  var err error
+  db.conn , err = sql.Open("mysql", url)
+  if err != nil {
+    log.Panicln(err.Error())
+  }
 }
 
 func (db *Database) start(wg *sync.WaitGroup) {

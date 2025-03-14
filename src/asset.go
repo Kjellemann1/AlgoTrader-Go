@@ -319,18 +319,22 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
   // TODO: Log retries
   backoff_sec := 1.0
   retries := 0
+
   for {
     body, status, err := a.sendOpenOrder(order_type, position_id, symbol, asset_class, last_close)
+
     if err != nil {
       util.Error(err, "Symbol", symbol, "Body", body)
       a.removePosition(strat_name)
       return
     }
+
     if retries > 1 {
       log.Println("[ CANCEL ]\t" +  util.AddWhitespace(symbol, 10) + "\tOpen failed on retry")
       a.removePosition(strat_name)
       return
     }
+
     switch status {
     case 200:
       if retries > 0 {

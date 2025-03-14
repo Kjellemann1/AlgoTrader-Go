@@ -144,7 +144,6 @@ func OpenLongIOC(symbol string, asset_class string, position_id string, last_pri
   return body, status, nil
 }
 
-// TODO: Check if position exists if order fails, and implement retry with backoff.
 func CloseIOC(side string, symbol string, order_id string, qty decimal.Decimal) (string, int, error) {
   payload := `{` +
     `"symbol": "` + symbol + `", ` +
@@ -184,8 +183,8 @@ func CloseGTC(side string, symbol string, order_id string, qty decimal.Decimal) 
 
 func CloseAllPositions(backoff_sec float64, retries int) {
   if retries >= constant.REQUEST_RETRIES {
-    // TODO: Check if this could be a push message
     log.Printf("[ FAIL ]\tFailed to close all positions after %d retries\n", retries)
+    util.Error(errors.New("Failed to close all positions."), "Max retries reached", retries)
     return
   }
 
@@ -271,7 +270,6 @@ func GetClosedOrders(symbols map[string]map[string]int, backoff_sec float64, ret
   return parsed, nil
 }
 
-// TODO: Make test
 func GetAssetQtys() (qtys map[string]decimal.Decimal, err error) {
   apos, err := GetPositions(5, 0)
   if err != nil {
