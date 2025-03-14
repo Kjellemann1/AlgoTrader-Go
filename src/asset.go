@@ -351,12 +351,12 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
       util.Backoff(&backoff_sec)
       retries++
     case 429:
+      NNP.RateLimitSleep()
       util.Warning(errors.New("Rate limit exceeded on Open"),
         "Symbol", symbol, "Strat", strat_name,
         "Setting NoNewPositionsFlag to true for (seconds)", constant.RATE_LIMIT_SLEEP_SEC,
         util.AddWhitespace(symbol, 10), strat_name,
       )
-      NNP.RateLimitSleep()
       return
     }
   }
@@ -427,12 +427,12 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
       )
       return
     case 429:
+      NNP.RateLimitSleep()
       util.Warning(errors.New("Rate limit exceeded on Close"),
         "Symbol", symbol, "Strat", strat_name, "Retrying in (seconds)", backoff_sec,
         "Setting NoNewPositionsFlag to true for (seconds)", constant.RATE_LIMIT_SLEEP_SEC,
         util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
       )
-      NNP.RateLimitSleep()
       util.BackoffWithMax(&backoff_sec, backoff_max)
     default:
       util.Error(errors.New("Sending close order failed"),
