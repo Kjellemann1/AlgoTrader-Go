@@ -150,6 +150,7 @@ func newAsset(asset_class string, symbol string) (a *Asset) {
     L: make([]float64, constant.WINDOW_SIZE),
     C: make([]float64, constant.WINDOW_SIZE),
     strategies: []strategyFunc{
+      // Add strategies here
       (*Asset).rand,
     },
   }
@@ -349,6 +350,14 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
       )
       util.Backoff(&backoff_sec)
       retries++
+    case 429:
+      util.Warning(errors.New("Rate limit exceeded on Open"),
+        "Symbol", symbol, "Strat", strat_name,
+        "Setting NoNewPositionsFlag to true for (seconds)", constant.RATE_LIMIT_SLEEP_SEC,
+        util.AddWhitespace(symbol, 10), strat_name,
+      )
+      NNP.RateLimitSleep()
+      return
     }
   }
 }
@@ -385,7 +394,7 @@ func (a *Asset) closeUpdatePosition(pos *Position, trigger_time time.Time, order
 func (a *Asset) sendClose(strat_name string, open_side string, order_type string, position_id string, symbol string, qty decimal.Decimal) {
   // TODD: Log retries
   backoff_sec := 1.0
-  backoff_max := 8.0
+  backoff_max := 20.0
   retries := 0
   
   for {
@@ -395,16 +404,6 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
     }
 
     switch status {
-    case 422:
-      util.Error(errors.New("Close order unprocessable"),
-        "Symbol", symbol, "Strat", strat_name, "Body", body, "Retrying in (seconds)", backoff_sec,
-      )
-      return
-    case 403:
-      log.Printf("[ INFO ]\t%s\t%s\t%s\tForbidden block on Close\tRetrying in (%.0f) seconds ...",
-        util.AddWhitespace(symbol, 10), strat_name, body, backoff_sec,
-      )
-      util.BackoffWithMax(&backoff_sec, backoff_max)
     case 200:
       if retries == 1 {
         log.Printf("[ INFO ]\t%s\t%s\tClose successful on retry", 
@@ -417,6 +416,24 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
         NNP.NoNewPositionsFalse("Close")
       }
       return
+    case 403:
+      log.Printf("[ INFO ]\t%s\t%s\t%s\tForbidden block on Close\tRetrying in (%.0f) seconds ...",
+        util.AddWhitespace(symbol, 10), strat_name, body, backoff_sec,
+      )
+      util.BackoffWithMax(&backoff_sec, backoff_max)
+    case 422:
+      util.Error(errors.New("Close order unprocessable"),
+        "Symbol", symbol, "Strat", strat_name, "Body", body, "Retrying in (seconds)", backoff_sec,
+      )
+      return
+    case 429:
+      util.Warning(errors.New("Rate limit exceeded on Close"),
+        "Symbol", symbol, "Strat", strat_name, "Retrying in (seconds)", backoff_sec,
+        "Setting NoNewPositionsFlag to true for (seconds)", constant.RATE_LIMIT_SLEEP_SEC,
+        util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
+      )
+      NNP.RateLimitSleep()
+      util.BackoffWithMax(&backoff_sec, backoff_max)
     default:
       util.Error(errors.New("Sending close order failed"),
         "Symbol", symbol, "Status", status, "Retrying in (seconds)", backoff_sec,

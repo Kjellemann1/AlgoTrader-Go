@@ -2,6 +2,7 @@ package main
 
 import (
   "sync"
+  "time"
 )
 
 var NNP = NewNoNewPositions()
@@ -37,4 +38,12 @@ func NewNoNewPositions() (n *NoNewPositions) {
     m: make(map[string]bool),
   }
   return
+}
+
+func (n *NoNewPositions) RateLimitSleep() {
+  go func() {
+    n.NoNewPositionsTrue("RateLimitSleep")
+    time.Sleep(30 * time.Second)
+    n.NoNewPositionsFalse("RateLimitSleep")
+  }()
 }

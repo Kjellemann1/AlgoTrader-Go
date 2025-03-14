@@ -19,6 +19,7 @@ const (
   MAX_TRIGGER_TIME_DIFF_MS = 100 * time.Millisecond
   READ_DEADLINE_SEC = 20 * time.Second
   PING_INTERVAL_SEC = 10 * time.Second
+  RATE_LIMIT_SLEEP_SEC = 30 * time.Second
   REQUEST_RETRIES = 4
 )
 

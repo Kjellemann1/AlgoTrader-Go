@@ -88,12 +88,8 @@ func TestGetClosedOrders(t *testing.T) {
 
   t.Run("Creating url", func(t *testing.T) {
     testMap := map[string]map[string]int{
-      "stock": {
-        "foo": 1,
-      },
-      "crypto": {
-        "foo/bar": 1,
-      },
+      "stock": { "foo": 1 },
+      "crypto": { "foo/bar": 1 },
     }
     url := urlGetClosedOrders(testMap)
     baseUrl := fmt.Sprintf(

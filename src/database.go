@@ -296,7 +296,6 @@ func (db *Database) retrieveState() {
       nCloseOrders int8
     )
 
-    // TODO: Write test to assure the order of the columns in the query is correct
     err = response.Scan(
       &symbol,
       &stratName,

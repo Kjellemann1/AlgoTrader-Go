@@ -103,7 +103,6 @@ func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
   return qty
 }
 
-// TODO: Make test
 func GetPositions(backoff_sec float64, retries int) (arr []*fastjson.Value, err error) {
   if retries >= constant.REQUEST_RETRIES {
     return nil, errors.New("Max retries reached. Failed to get positions.")
