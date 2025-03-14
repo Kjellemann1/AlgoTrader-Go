@@ -69,21 +69,25 @@ func parseBody(body []byte) ([]*fastjson.Value, error) {
   return arr, nil
 }
 
-func SendOrder(payload string) (int, error) {
+func SendOrder(payload string) (string, int, error) {
   url := constant.ENDPOINT + "/orders"
   request, err := http.NewRequest("POST", url, strings.NewReader(payload))
   if err != nil {
     util.Error(err, "Request", request)
-    return 0, err
+    return "", 0, err
   }
   request.Header = constant.AUTH_HEADERS
   response, err := HttpClient.Do(request)
   if err != nil {
-    util.Error(err, "Response", response)
-    return 0, err
+    return "", 0, err
   }
   defer response.Body.Close()
-  return response.StatusCode, nil
+  body_bytes, err := io.ReadAll(response.Body)
+  if err != nil {
+    util.Error(err)
+    return "", 0, err
+  }
+  return string(body_bytes), response.StatusCode, nil
 }
 
 func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
@@ -119,10 +123,10 @@ func GetPositions(backoff_sec float64, retries int) (arr []*fastjson.Value, err 
   return arr, nil
 }
 
-func OpenLongIOC(symbol string, asset_class string, position_id string, last_price float64) (int, error) {
+func OpenLongIOC(symbol string, asset_class string, position_id string, last_price float64) (string, int, error) {
   qty := CalculateOpenQty(asset_class, last_price)
   if qty.IsZero() {
-    return 0, errors.New("Calculated open qty is zero")
+    return "", 0, errors.New("Calculated open qty is zero")
   }
 
   payload := `{` +
@@ -132,16 +136,16 @@ func OpenLongIOC(symbol string, asset_class string, position_id string, last_pri
     `"side": "buy", "type": "market", "time_in_force": "ioc", "order_class": "simple"` +
   `}`
 
-  status, err := SendOrder(payload)
+  body, status, err := SendOrder(payload)
   if err != nil || status != 200 {
-    return status, err
+    return body, status, err
   }
 
-  return status, nil
+  return body, status, nil
 }
 
 // TODO: Check if position exists if order fails, and implement retry with backoff.
-func CloseIOC(side string, symbol string, order_id string, qty decimal.Decimal) (int, error) {
+func CloseIOC(side string, symbol string, order_id string, qty decimal.Decimal) (string, int, error) {
   payload := `{` +
     `"symbol": "` + symbol + `", ` +
     `"client_order_id": "` + order_id + `_close", ` +
@@ -150,15 +154,15 @@ func CloseIOC(side string, symbol string, order_id string, qty decimal.Decimal) 
     `"type": "market", "time_in_force": "ioc", "order_class": "simple"` +
   `}`
 
-  status, err := SendOrder(payload)
+  body, status, err := SendOrder(payload)
   if err != nil || status != 200 {
-    return status, err
+    return body, status, err
   }
 
-  return status, nil
+  return body, status, nil
 }
 
-func CloseGTC(side string, symbol string, order_id string, qty decimal.Decimal) (int, error) {
+func CloseGTC(side string, symbol string, order_id string, qty decimal.Decimal) (string, int, error) {
   payload := `{` +
     `"symbol": "` + symbol + `", ` +
     `"client_order_id": "` + order_id + `_close", ` +
@@ -167,15 +171,15 @@ func CloseGTC(side string, symbol string, order_id string, qty decimal.Decimal) 
     `"type": "market", "time_in_force": "gtc", "order_class": "simple"` +
   `}`
 
-  status, err := SendOrder(payload)
+  resp, status, err := SendOrder(payload)
   if err != nil || status != 200 {
     if err == nil {
       err = errors.New("Bad status code")
     }
-    return status, err
+    return resp, status, err
   }
 
-  return status, nil
+  return resp, status, nil
 }
 
 func CloseAllPositions(backoff_sec float64, retries int) {

@@ -252,16 +252,16 @@ func (a *Asset) removePosition(strat_name string) {
   delete(a.Positions, strat_name)
 }
 
-func (a *Asset) sendOpenOrder(order_type string, position_id string, symbol string, asset_class string, last_close float64) (int, error) {
+func (a *Asset) sendOpenOrder(order_type string, position_id string, symbol string, asset_class string, last_close float64) (string, int, error) {
   switch order_type {
     case "IOC":
-      status, err := request.OpenLongIOC(symbol, asset_class, position_id, last_close)
-      return status, err
+      body, status, err := request.OpenLongIOC(symbol, asset_class, position_id, last_close)
+      return body, status, err
   }
-  return 0, nil
+  return "", 0, nil
 }
 
-func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, symbol string, qty decimal.Decimal) (int, error) {
+func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, symbol string, qty decimal.Decimal) (string, int, error) {
   var side string
   switch open_side {
   case "long":
@@ -271,10 +271,10 @@ func (a *Asset) sendCloseOrder(open_side, order_type string, order_id string, sy
   }
   switch order_type {
     case "IOC":
-      status, err := request.CloseIOC(side, symbol, order_id, qty)
-      return status, err
+      body, status, err := request.CloseIOC(side, symbol, order_id, qty)
+      return body, status, err
   }
-  return 0, nil
+  return "", 0, nil
 }
 
 //////////////////////// Methods below this point are for being called from strategy functions
@@ -320,9 +320,9 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
   backoff_sec := 1.0
   retries := 0
   for {
-    status, err := a.sendOpenOrder(order_type, position_id, symbol, asset_class, last_close)
+    body, status, err := a.sendOpenOrder(order_type, position_id, symbol, asset_class, last_close)
     if err != nil {
-      util.Error(err, "Symbol", symbol)
+      util.Error(err, "Symbol", symbol, "Body", body)
       a.removePosition(strat_name)
       return
     }
@@ -385,20 +385,20 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
   retries := 0
   
   for {
-    status, err := a.sendCloseOrder(open_side, order_type, position_id, symbol, qty)
+    body, status, err := a.sendCloseOrder(open_side, order_type, position_id, symbol, qty)
     if err != nil {
       util.Error(err, "Symbol", symbol, "Strat", strat_name)
     }
 
     switch status {
     case 422:
-      log.Println("[ CANCEL ]\t" + a.Symbol + "\tStatus:", status)
+      util.Error(errors.New("Close order unprocessable"),
+        "Symbol", symbol, "Strat", strat_name, "Body", body, "Retrying in (seconds)", backoff_sec,
+      )
       return
     case 403:
-      // TODO: Make sure this is actually a wash trade by checking response, and not
-      // insufficient funds, qty etc.
-      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Close\tRetrying in (%.0f) seconds ...",
-        util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
+      log.Printf("[ INFO ]\t%s\t%s\t%s\tForbidden block on Close\tRetrying in (%.0f) seconds ...",
+        util.AddWhitespace(symbol, 10), strat_name, body, backoff_sec,
       )
       util.BackoffWithMax(&backoff_sec, backoff_max)
     case 200:

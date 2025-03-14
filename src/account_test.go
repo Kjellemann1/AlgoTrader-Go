@@ -42,23 +42,23 @@ func mockServerAccount(urlChan chan string, msgChan chan string, rootWg *sync.Wa
   upgrader := websocket.Upgrader{}
   server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     ws, _ := upgrader.Upgrade(w, r, nil)
-    conn := mockAccountConn{ws}
-    defer conn.Close()
+    c := mockAccountConn{ws}
+    defer c.Close()
     if iter == 1 {
-      msgChan <- conn.read()
-      conn.write(`{"stream":"authorization,","data":{"status":"unathorized","action":"authenticate"}}`)
+      msgChan <- c.read()
+      c.write(`{"stream":"authorization,","data":{"status":"unathorized","action":"authenticate"}}`)
     } else if iter == 2 {
-      msgChan <- conn.read()
-      conn.write(`{"stream":"authorization","data":{"status":"unauthorized","action":"listen"}}`)
-      conn.write(`{"stream":"authorization","data":{"status":"authorized","action":"authenticate"}}`)
-      msgChan <- conn.read()
-      conn.write(`{"stream":"listening","data":{"streams":["trade_updates"]}}`)
+      msgChan <- c.read()
+      c.write(`{"stream":"authorization","data":{"status":"unauthorized","action":"listen"}}`)
+      c.write(`{"stream":"authorization","data":{"status":"authorized","action":"authenticate"}}`)
+      msgChan <- c.read()
+      c.write(`{"stream":"listening","data":{"streams":["trade_updates"]}}`)
       signalChan <- 1
     } else {
-      msgChan <- conn.read()
-      conn.write(`{"stream":"authorization","data":{"status":"authorized","action":"authenticate"}}`)
-      msgChan <- conn.read()
-      conn.write(`{"stream":"listening","data":{"streams":["trade_updates"]}}`)
+      msgChan <- c.read()
+      c.write(`{"stream":"authorization","data":{"status":"authorized","action":"authenticate"}}`)
+      msgChan <- c.read()
+      c.write(`{"stream":"listening","data":{"streams":["trade_updates"]}}`)
       signalChan <- 1
     }
     iter++

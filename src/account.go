@@ -640,13 +640,14 @@ func (a *Account) parseClosedOrders(relevant map[string][]*fastjson.Value) map[s
 func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string, backoff_sec float64) {
   retries := 0
   for {
-    status, err := request.CloseGTC("sell", symbol, "strat[reconnect_multiple_diff]", diff)
+    body, status, err := request.CloseGTC("sell", symbol, "strat[reconnect_multiple_diff]", diff)
     if err != nil {
       util.Error(err, "Failed to send close order", "...")
     }
     switch status {
     case 403:
       util.Warning(errors.New("forbidden block"),
+        "Body", body,
         "Retries", retries,
         "Trying again in (seconds)", backoff_sec,
       )
@@ -659,6 +660,7 @@ func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string, backoff_sec 
       return
     default:
       util.Error(fmt.Errorf("failed to send close order. Status: %d", status),
+        "Body", body,
         "Retries", retries,
         "Trying again in (seconds)", backoff_sec,
       )

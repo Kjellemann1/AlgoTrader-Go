@@ -89,7 +89,6 @@ func (m *Market) checkAllSymbolsInSubscription(element *fastjson.Value) {
 func (m *Market) onInitialMessages(element *fastjson.Value) {
   msg := string(element.GetStringBytes("msg"))
   switch msg {
-
     case "connected":
       util.Ok(fmt.Sprintf("Connected to websocket for %s", m.asset_class))
     case "authenticated":
