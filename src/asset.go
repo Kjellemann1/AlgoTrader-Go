@@ -345,8 +345,8 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
       }
       return
     case 403:
-      log.Printf("[ INFO ]\t%s\t%s\tWash trade block on Open\tRetrying in (%.0f) seconds ...",
-        util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
+      log.Printf("[ INFO ]\t%s\t%s\t%s\tForbidden block on Close\tRetrying in (%.0f) seconds ...",
+        util.AddWhitespace(symbol, 10), strat_name, body, backoff_sec,
       )
       util.Backoff(&backoff_sec)
       retries++

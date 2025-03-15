@@ -42,7 +42,7 @@ func GetReq(url string) ([]byte, error) {
     fmt.Println("Error reading body. ", err)
     return nil, err
   }
-  if string(body) == "[]" {
+  if string(body) == "[]" || string(body) == "" {
     return nil, nil
   }
   if string(body) == `{"message":"forbidden."}` {
@@ -52,7 +52,7 @@ func GetReq(url string) ([]byte, error) {
 }
 
 func parseBody(body []byte) ([]*fastjson.Value, error) {
-  if string(body) == "[]" {
+  if string(body) == "[]" || string(body) == "" {
     return nil, nil
   }
   if string(body) == `{"message":"forbidden."}` {

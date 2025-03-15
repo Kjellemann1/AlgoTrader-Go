@@ -223,12 +223,24 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min
     select {
     case <-ctx.Done():
       cancel()
-      a.conn.Close()
+      if err := a.conn.Close(); err != nil {
+        util.Error(err)
+        if err := a.conn.UnderlyingConn().Close(); err != nil {
+          util.Error(err)
+          continue
+        }
+      }
       connWg.Wait()
       return
     case <-err_chan:
       cancel()
-      a.conn.Close()
+      if err := a.conn.Close(); err != nil {
+        util.Error(err)
+        if err := a.conn.UnderlyingConn().Close(); err != nil {
+          util.Error(err)
+          continue
+        }
+      }
       connWg.Wait()
     }
   }
