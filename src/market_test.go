@@ -78,7 +78,7 @@ func TestMarketReconnect(t *testing.T) {
     go mockServerMarket(false, urlChan, msgchan, &rootWg, signalChan)
 
     m := NewMarket("stock", <-urlChan, assets)
-    m.pingPong = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
+    m.pingWriter = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
       defer wg.Done()
       <-signalChan
       err_chan <-1
@@ -114,7 +114,7 @@ func TestMarketReconnect(t *testing.T) {
     go mockServerMarket(true, urlChan, msgchan, &rootWg, signalChan)
 
     m := NewMarket("stock", <-urlChan, assets)
-    m.listen = func(wg *sync.WaitGroup, err_chan chan int8) {
+    m.listen = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8, msg_chan chan MarketMessage) {
       defer wg.Done()
       <-signalChan
       err_chan <-1

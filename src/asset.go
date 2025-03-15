@@ -415,7 +415,7 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
     switch status {
     case 200:
       if retries == 1 {
-        log.Printf("[ INFO ]\t%s\t%s\tSending Close order succesfull on retry",
+        log.Printf("[ INFO ]\t%s\t%s\tSending Close order successfull on retry",
           util.AddWhitespace(symbol, 10), strat_name,
         )
       } else if retries > 1 {

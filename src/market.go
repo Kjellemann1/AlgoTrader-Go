@@ -28,8 +28,8 @@ type Market struct {
   url               string
   worker_pool_chan  chan MarketMessage
 
-  listen            func(*sync.WaitGroup, chan int8)
-  pingPong          func(*sync.WaitGroup, context.Context, chan int8)
+  listen            func(*sync.WaitGroup, context.Context, chan int8, chan MarketMessage)
+  pingWriter        func(*sync.WaitGroup, context.Context, chan int8)
 }
 
 func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Market) {
@@ -40,7 +40,7 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Mar
     assets: assets,
     worker_pool_chan: make(chan MarketMessage, n_workers),
   }
-  m.pingPong = m.pingPongFunc
+  m.pingWriter = m.pingWriterFunc
   m.listen = m.listenFunc
   return
 }
@@ -205,24 +205,26 @@ func (m *Market) subscribe() (err error) {
   return
 }
 
-func (m *Market) pingPongFunc(connWg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
-  defer connWg.Done()
-
-  if err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
-    util.Warning(err)
-  }
-
-  m.conn.SetPongHandler(func(string) error {
-    err := m.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC))
-    if err != nil {
-      return err
-    }
+func (a *Market) setPongHandler() {
+  a.conn.SetPongHandler(func(string) error {
+    a.setReadDeadline()
     return nil
   })
+  util.Ok(fmt.Sprintf("PongHandler set for %s market websocket", a.asset_class))
+}
+
+func (a *Market) setReadDeadline() {
+  if err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
+    util.Error(err)
+  }
+}
+
+func (m *Market) pingWriterFunc(connWg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
+  defer connWg.Done()
 
   ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
   defer ticker.Stop()
-  util.Ok(fmt.Sprintf("PingPong initiated for %s market websocket", m.asset_class))
+  util.Ok(fmt.Sprintf("PingWriter initiated for %s market websocket", m.asset_class))
 
   for {
     select {
@@ -243,22 +245,33 @@ func (m *Market) pingPongFunc(connWg *sync.WaitGroup, ctx context.Context, err_c
   }
 }
 
-func (m *Market) listenFunc(connWg *sync.WaitGroup, err_chan chan int8) {
+func (m *Market) listenFunc(connWg *sync.WaitGroup, ctx context.Context, err_chan chan int8, msg_chan chan MarketMessage) {
   defer connWg.Done()
 
-  for {
-    _, message, err := m.conn.ReadMessage()
-    received_time := time.Now().UTC()
-    if err != nil {
-      select {
-      case err_chan <-1:
-        util.Error(err)
-      default:
+  go func() {
+    for {
+      _, message, err := m.conn.ReadMessage()
+      received_time := time.Now().UTC()
+      if err != nil {
+        select {
+        case err_chan <-1:
+          util.Error(err)
+        default:
+          util.Ok("ReadMessage error triggered successfully. Returning with no leak")
+        }
+        return
       }
+      msg_chan <- MarketMessage{message, received_time}
+    }
+  }()
+
+  for {
+    select {
+    case message := <-msg_chan:
+      m.worker_pool_chan <- message
+    case <-ctx.Done():
       return
     }
-
-    m.worker_pool_chan <- MarketMessage{message, received_time}
   }
 }
 
@@ -267,6 +280,9 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min 
 
   defer close(m.worker_pool_chan)
   m.initiateWorkerPool(len(m.assets))
+
+  msg_chan := make(chan MarketMessage)
+  defer close(msg_chan)
 
   backoff_sec := backoff_sec_min
   retries := 0
@@ -295,15 +311,19 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min 
     backoff_sec = backoff_sec_min
     retries = 0
 
+    m.setPongHandler()
+    m.setReadDeadline()
+
     err_chan := make(chan int8)
 
     var connWg sync.WaitGroup
-    connWg.Add(1)
-    go m.listen(&connWg, err_chan)
-
     context, cancel := context.WithCancel(ctx)
+
     connWg.Add(1)
-    go m.pingPong(&connWg, context, err_chan)
+    go m.listen(&connWg, context, err_chan, msg_chan)
+
+    connWg.Add(1)
+    go m.pingWriter(&connWg, context, err_chan)
 
     select {
     case <-ctx.Done():

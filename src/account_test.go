@@ -90,7 +90,7 @@ func TestAccountReconnect(t *testing.T) {
     go mockServerAccount(urlChan, msgChan, &rootWg, signalChan)
 
     a := NewAccount(assets, <-urlChan, db_chan)
-    a.pingPong = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
+    a.pingWriter = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
       defer wg.Done()
       <-signalChan
       err_chan <-1
@@ -117,17 +117,19 @@ func TestAccountReconnect(t *testing.T) {
     defer close(urlChan)
     signalChan := make(chan int8)
     defer close(signalChan)
-    msgChan := make(chan string, 10)
+    msg_chan := make(chan []byte)
+    defer close(msg_chan)
+    subMsgChan := make(chan string, 10)
 
     rootCtx, rootCancel := context.WithCancel(context.Background())
 
     var rootWg sync.WaitGroup
     rootWg.Add(1)
 
-    go mockServerAccount(urlChan, msgChan, &rootWg, signalChan)
+    go mockServerAccount(urlChan, subMsgChan, &rootWg, signalChan)
 
     a := NewAccount(assets, <-urlChan, db_chan)
-    a.pingPong = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
+    a.listen = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8, msg_chan chan []byte) {
       defer wg.Done()
       <-signalChan
       err_chan <-1
@@ -139,10 +141,10 @@ func TestAccountReconnect(t *testing.T) {
     rootCancel()
 
     rootWg.Wait()
-    close(msgChan)
+    close(subMsgChan)
 
     subMsgCount := 0
-    for range msgChan {
+    for range subMsgChan {
       subMsgCount++
     }
 
