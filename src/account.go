@@ -188,6 +188,7 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min
 
   backoff_sec := backoff_sec_min
   retries := 0
+  leaks := 0
 
   for {
     if err := a.connect() ; err != nil {
@@ -237,7 +238,8 @@ func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min
       if err := a.conn.Close(); err != nil {
         util.Error(err)
         if err := a.conn.UnderlyingConn().Close(); err != nil {
-          util.Error(err)
+          leaks++
+          util.Error(err, "Letting go routine leak. Leak count:", leaks)
           continue
         }
       }
@@ -528,7 +530,7 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   var pos *Position = asset.Positions[*u.StratName]
 
   if pos == nil {
-    util.Error(errors.New("Position nil: %s"),
+    util.Error(errors.New("Position nil"),
       "Symbol", *u.Symbol,
       "StratName", *u.StratName,
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
@@ -691,6 +693,7 @@ func (a *Account) sendCloseGTC(diff decimal.Decimal, symbol string, backoff_sec 
 
 func (a *Account) multiple(parsed []*ParsedClosedOrder, asset_class string) {
   asset := a.assets[asset_class][*parsed[0].Symbol]
+
   for _, pco := range parsed {
     pos := asset.Positions[*pco.StratName]
     pos.BadForAnalysis = true
@@ -698,7 +701,11 @@ func (a *Account) multiple(parsed []*ParsedClosedOrder, asset_class string) {
     a.db_chan <-pos.LogClose()
     asset.removePosition(*pco.StratName)
   }
+
   diff_no_pending := asset.Qty.Sub(asset.sumNoPendingPosQtys())
+  fmt.Println("diff_no_pending", diff_no_pending)
+  fmt.Println("asset.Qty", asset.Qty)
+
   if !diff_no_pending.IsZero() {
     a.sendCloseGTC(diff_no_pending, *parsed[0].Symbol, 0)
   }

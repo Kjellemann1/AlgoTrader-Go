@@ -11,7 +11,7 @@ const (
   WSS_CRYPTO = "wss://stream.data.alpaca.markets/v1beta3/crypto/us"
   WSS_ACCOUNT = "wss://paper-api.alpaca.markets/stream"
   WINDOW_SIZE int = 500
-  ORDER_AMOUNT_USD float64 = 500
+  NOTIONAL_USD float64 = 50
   HIST_DAYS = 1
   HIST_LIMIT = 10000
   HTTP_TIMEOUT_SEC = 5 * time.Second

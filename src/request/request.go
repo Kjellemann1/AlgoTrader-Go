@@ -93,12 +93,12 @@ func SendOrder(payload string) (string, int, error) {
 func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
   qty, _ := decimal.NewFromString("0")
   if asset_class == "stock" {
-    qty = decimal.NewFromFloat(constant.ORDER_AMOUNT_USD / last_price).RoundDown(0)
+    qty = decimal.NewFromFloat(constant.NOTIONAL_USD / last_price).RoundDown(0)
     if qty.Cmp(decimal.NewFromInt(1)) == -1 {
       qty = decimal.NewFromInt(0)
     }
   } else if asset_class == "crypto" {
-    qty = decimal.NewFromFloat(constant.ORDER_AMOUNT_USD / last_price).RoundDown(9)
+    qty = decimal.NewFromFloat(constant.NOTIONAL_USD / last_price).RoundDown(9)
   }
   return qty
 }

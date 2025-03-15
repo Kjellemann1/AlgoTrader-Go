@@ -322,34 +322,32 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
   retries := 0
 
   for {
-    body, status, err := a.sendOpenOrder(order_type, position_id, symbol, asset_class, last_close)
-
-    if err != nil {
-      util.Error(err, "Symbol", symbol, "Body", body)
-      a.removePosition(strat_name)
-      return
-    }
-
     if retries > 1 {
       log.Println("[ CANCEL ]\t" +  util.AddWhitespace(symbol, 10) + "\tOpen failed on retry")
       a.removePosition(strat_name)
       return
     }
 
+    body, status, err := a.sendOpenOrder(order_type, position_id, symbol, asset_class, last_close)
+    if err != nil {
+      util.Error(err, "Symbol", symbol, "Body", body)
+      a.removePosition(strat_name)
+      return
+    }
+
     switch status {
     case 200:
-      if retries > 0 {
-        log.Printf("[ INFO ]\t%s\t%s\tOpen successful on retry\n",
+      if retries >= 1 {
+        log.Printf("[ INFO ]\t%s\t%s\tSending Open order successful on retry\n",
           util.AddWhitespace(symbol, 10), strat_name,
         )
       }
       return
     case 403:
-      log.Printf("[ INFO ]\t%s\t%s\t%s\tForbidden block on Close\tRetrying in (%.0f) seconds ...",
+      log.Printf("[ INFO ]\t%s\t%s\t%s\tForbidden block when sending Open order\tRetrying in (%.0f) seconds ...",
         util.AddWhitespace(symbol, 10), strat_name, body, backoff_sec,
       )
       util.Backoff(&backoff_sec)
-      retries++
     case 429:
       NNP.RateLimitSleep()
       util.Warning(errors.New("Rate limit exceeded on Open"),
@@ -357,8 +355,14 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
         "Setting NoNewPositionsFlag to true for (seconds)", constant.RATE_LIMIT_SLEEP_SEC,
         util.AddWhitespace(symbol, 10), strat_name,
       )
-      return
+    default:
+      util.Error(errors.New("Sending open order failed"),
+       "Symbol", symbol, "Status", status, "Retrying in (seconds)", backoff_sec,
+      )
+      util.Backoff(&backoff_sec)
     }
+
+    retries++
   }
 }
 
@@ -398,6 +402,11 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
   retries := 0
   
   for {
+    if retries > 1 {
+      NNP.NoNewPositionsTrue("Close")
+      util.Info("Retry count", "Retries", retries)
+    }
+
     body, status, err := a.sendCloseOrder(open_side, order_type, position_id, symbol, qty)
     if err != nil {
       util.Error(err, "Symbol", symbol, "Strat", strat_name)
@@ -406,7 +415,7 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
     switch status {
     case 200:
       if retries == 1 {
-        log.Printf("[ INFO ]\t%s\t%s\tClose successful on retry", 
+        log.Printf("[ INFO ]\t%s\t%s\tSending Close order succesfull on retry",
           util.AddWhitespace(symbol, 10), strat_name,
         )
       } else if retries > 1 {
@@ -439,13 +448,6 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
         "Symbol", symbol, "Status", status, "Retrying in (seconds)", backoff_sec,
       )
       util.BackoffWithMax(&backoff_sec, backoff_max)
-    }
-
-    if retries > 1 {
-      NNP.NoNewPositionsTrue("Close")
-      util.Error(errors.New("Close failed on retry"),
-        "Symbol", symbol, "Strat", strat_name, "Retries", retries,
-      )
     }
 
     retries++

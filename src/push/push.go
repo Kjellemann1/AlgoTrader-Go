@@ -36,13 +36,13 @@ func push(message string, title string, prio int) {
   response, err := httpClient.Post(url, "application/json", bytes.NewBuffer([]byte(payload)))
   if err != nil {
     log.Printf(
-      "[ WARNING ]\tError making POST request\n  -> Error: %s\n  -> Response: %s\n Payload: %s", err, response.Status, payload)
+      "[ WARNING ]\tError making POST request\n  -> Error: %s\n  -> Response status: %s\n Payload: %s", err, response.Status, payload)
     return
   }
   defer response.Body.Close()
   if response.StatusCode != http.StatusOK {
     log.Printf(
-      "[ WARNING ]\tFailed to send push notification\n  -> Response: %s\n  -> Payload: %s\n", response.Status, payload)
+      "[ WARNING ]\tFailed to send push notification\n  -> Response status: %s\n  -> Payload: %s\n", response.Status, payload)
   }
 }
 
