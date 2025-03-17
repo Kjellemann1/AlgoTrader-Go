@@ -24,12 +24,14 @@ type MarketMessage struct {
 type Market struct {
   asset_class       string
   assets            map[string]*Asset
-  conn              *websocket.Conn
   url               string
   worker_pool_chan  chan MarketMessage
+  conn              *websocket.Conn
+  msg_chan          chan MarketMessage
+  err_chan          chan int8
 
-  listen            func(*sync.WaitGroup, context.Context, chan int8, chan MarketMessage)
-  pingWriter        func(*sync.WaitGroup, context.Context, chan int8)
+  listen            func(*sync.WaitGroup, context.Context)
+  pingWriter        func(*sync.WaitGroup, context.Context)
 }
 
 func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Market) {
@@ -39,6 +41,8 @@ func NewMarket(asset_class string, url string, assets map[string]*Asset) (m *Mar
     url: url,
     assets: assets,
     worker_pool_chan: make(chan MarketMessage, n_workers),
+    msg_chan: make(chan MarketMessage),
+    err_chan: make(chan int8),
   }
   m.pingWriter = m.pingWriterFunc
   m.listen = m.listenFunc
@@ -219,7 +223,7 @@ func (a *Market) setReadDeadline() {
   }
 }
 
-func (m *Market) pingWriterFunc(connWg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
+func (m *Market) pingWriterFunc(connWg *sync.WaitGroup, ctx context.Context) {
   defer connWg.Done()
 
   ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
@@ -234,40 +238,47 @@ func (m *Market) pingWriterFunc(connWg *sync.WaitGroup, ctx context.Context, err
       if err := m.conn.WriteControl(
         websocket.PingMessage, []byte("ping"),
         time.Now().Add(5 * time.Second)); err != nil {
+
         select {
-        case err_chan <-1:
+        case m.err_chan <-1:
           util.Error(err)
         default:
         }
+
         return
       }
     }
   }
 }
 
-func (m *Market) listenFunc(connWg *sync.WaitGroup, ctx context.Context, err_chan chan int8, msg_chan chan MarketMessage) {
-  defer connWg.Done()
-
-  go func() {
+func (m *Market) reader() {
     for {
       _, message, err := m.conn.ReadMessage()
       received_time := time.Now().UTC()
       if err != nil {
         select {
-        case err_chan <-1:
+        case m.err_chan <-1:
           util.Error(err)
         default:
           util.Ok("ReadMessage error triggered successfully. Returning with no leak")
         }
         return
       }
-      msg_chan <- MarketMessage{message, received_time}
+
+      m.msg_chan <- MarketMessage{message, received_time}
     }
-  }()
+}
+
+func (m *Market) listenFunc(connWg *sync.WaitGroup, ctx context.Context) {
+  defer connWg.Done()
+
+  // If closing the connection after a pingHandler error does not force the read to return an error,
+  // this go routine will "leak" and the program will continue.
+  go m.reader()
 
   for {
     select {
-    case message := <-msg_chan:
+    case message := <-m.msg_chan:
       m.worker_pool_chan <- message
     case <-ctx.Done():
       return
@@ -276,13 +287,14 @@ func (m *Market) listenFunc(connWg *sync.WaitGroup, ctx context.Context, err_cha
 }
 
 func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min float64) {
-  defer wg.Done()
+  defer func() {
+    close(m.worker_pool_chan)
+    close(m.msg_chan)
+    close(m.err_chan)
+    wg.Done()
+  }()
 
-  defer close(m.worker_pool_chan)
   m.initiateWorkerPool(len(m.assets))
-
-  msg_chan := make(chan MarketMessage)
-  defer close(msg_chan)
 
   backoff_sec := backoff_sec_min
   retries := 0
@@ -291,7 +303,7 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min 
     if err := m.connect(); err != nil {
       if retries < 5 {
         util.Error(err, "Retries", retries)
-        util.Backoff(&backoff_sec)
+       util.Backoff(&backoff_sec)
         retries++
         continue
       } else {
@@ -314,16 +326,11 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min 
     m.setPongHandler()
     m.setReadDeadline()
 
-    err_chan := make(chan int8)
-
+    ctx, cancel := context.WithCancel(ctx)
     var connWg sync.WaitGroup
-    context, cancel := context.WithCancel(ctx)
-
-    connWg.Add(1)
-    go m.listen(&connWg, context, err_chan, msg_chan)
-
-    connWg.Add(1)
-    go m.pingWriter(&connWg, context, err_chan)
+    connWg.Add(2)
+    go m.listen(&connWg, ctx)
+    go m.pingWriter(&connWg, ctx)
 
     select {
     case <-ctx.Done():
@@ -331,7 +338,7 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min 
       m.conn.Close()
       connWg.Wait()
       return
-    case <-err_chan:
+    case <-m.err_chan:
       cancel()
       m.conn.Close()
       connWg.Wait()

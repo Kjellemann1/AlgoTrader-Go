@@ -17,7 +17,6 @@ import (
   "github.com/Kjellemann1/AlgoTrader-Go/request"
   "github.com/Kjellemann1/AlgoTrader-Go/push"
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
 
 type mockAccountConn struct {
@@ -90,10 +89,10 @@ func TestAccountReconnect(t *testing.T) {
     go mockServerAccount(urlChan, msgChan, &rootWg, signalChan)
 
     a := NewAccount(assets, <-urlChan, db_chan)
-    a.pingWriter = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
+    a.pingWriter = func(wg *sync.WaitGroup, ctx context.Context) {
       defer wg.Done()
       <-signalChan
-      err_chan <-1
+      a.err_chan <-1
     }
 
     var wg sync.WaitGroup
@@ -129,10 +128,10 @@ func TestAccountReconnect(t *testing.T) {
     go mockServerAccount(urlChan, subMsgChan, &rootWg, signalChan)
 
     a := NewAccount(assets, <-urlChan, db_chan)
-    a.listen = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8, msg_chan chan []byte) {
+    a.listen = func(wg *sync.WaitGroup, ctx context.Context) {
       defer wg.Done()
       <-signalChan
-      err_chan <-1
+      a.err_chan <-1
     }
 
     var wg sync.WaitGroup
@@ -170,12 +169,6 @@ func init() {
       return &http.Response{ StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[{"id":1}]`)) }, nil
     }),
   }
-
-  util.Error = func(err error, details ...any) {}
-  util.Warning = func(err error, details ...any) {}
-  util.Ok = func(message string) {}
-  util.Open = func(message string) {}
-  util.Close = func(message string) {}
 
   push.DisablePush()
 }
@@ -266,7 +259,6 @@ func TestSendCloseGTC(t *testing.T) {
     a := &Account{}
     assert.Panics(t, func() { a.sendCloseGTC(decimal.NewFromFloat(0.1), "BTC/USD", 0) })
   })
-  
 }
 
 func TestUpdatePositions(t *testing.T) {

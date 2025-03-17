@@ -274,6 +274,8 @@ func (db *Database) checkQtysMatch() {
       }
     }
   }
+
+  util.Ok("Database qtys match server qtys")
 }
 
 func (db *Database) retrieveState() {

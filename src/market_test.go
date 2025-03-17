@@ -78,10 +78,10 @@ func TestMarketReconnect(t *testing.T) {
     go mockServerMarket(false, urlChan, msgchan, &rootWg, signalChan)
 
     m := NewMarket("stock", <-urlChan, assets)
-    m.pingWriter = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
+    m.pingWriter = func(wg *sync.WaitGroup, ctx context.Context) {
       defer wg.Done()
       <-signalChan
-      err_chan <-1
+      m.err_chan <-1
     }
 
     assert.Panics(t, func() { m.start(&xWg, rootCtx, 0) }, "Expected panic after server close")
@@ -114,10 +114,10 @@ func TestMarketReconnect(t *testing.T) {
     go mockServerMarket(true, urlChan, msgchan, &rootWg, signalChan)
 
     m := NewMarket("stock", <-urlChan, assets)
-    m.listen = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8, msg_chan chan MarketMessage) {
+    m.listen = func(wg *sync.WaitGroup, ctx context.Context) {
       defer wg.Done()
       <-signalChan
-      err_chan <-1
+      m.err_chan <-1
     }
 
     var wg sync.WaitGroup
