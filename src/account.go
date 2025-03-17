@@ -19,14 +19,15 @@ import (
 )
 
 type Account struct {
-  conn    *websocket.Conn
-  parser  fastjson.Parser
-  db_chan chan *Query
-  assets  map[string]map[string]*Asset
-  url     string
+  conn       *websocket.Conn
+  parser     fastjson.Parser
+  assets     map[string]map[string]*Asset
+  url        string
+  db_chan    chan *Query
+  err_chan   chan int8
 
-  listen func(*sync.WaitGroup, chan int8)
-  pingPong func(*sync.WaitGroup, context.Context, chan int8)
+  listen     func(*sync.WaitGroup)
+  pingSender func(*sync.WaitGroup)
 }
 
 func NewAccount(assets map[string]map[string]*Asset, url string, db_chan chan *Query) *Account {
@@ -34,9 +35,10 @@ func NewAccount(assets map[string]map[string]*Asset, url string, db_chan chan *Q
     parser: fastjson.Parser{},
     assets: assets,
     db_chan: db_chan,
+    err_chan: make(chan int8, 10),
     url: url,
   }
-  a.pingPong = a.pingPongFunc
+  a.pingSender = a.pingSenderFunc
   a.listen = a.listenFunc
   return a
 }
@@ -79,6 +81,8 @@ func (a *Account) messageHandler(message []byte) error {
       a.orderUpdateHandler(update)
     case "listening":
       util.Ok("Listening to order updates")
+    default:
+      util.Warning(errors.New("Unknown message type"), "Message", parsed_msg.String())
   }
 
   return nil
@@ -127,123 +131,118 @@ func (a *Account) connect() (err error) {
   return nil
 }
 
-func (a *Account) pingPongFunc(connWg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
-  defer connWg.Done()
+func (a *Account) pingSenderFunc(wg *sync.WaitGroup) {
+  defer wg.Done()
+  ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
+  for range ticker.C {
+    if err := a.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(time.Second)); err != nil {
+      a.err_chan <-1
+      util.Error(err)
+      return
+    }
+  }
+}
 
-  if err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC)); err != nil {
-    util.Warning(err)
+func (a *Account) setReadDeadline() (err error) {
+  deadline := time.Now().Add(constant.READ_DEADLINE_SEC)
+  log.Println("Setting read deadline:", deadline)
+  err = a.conn.SetReadDeadline(deadline)
+  return
+}
+
+func (a *Account) setPongHandler() {
+  a.conn.SetPongHandler(func(appData string) (err error) {
+    log.Println("Pong received")
+    if err = a.setReadDeadline(); err != nil {
+      a.err_chan <-1
+      util.Error(err)
+    }
+    return
+  })
+}
+
+func (a *Account) listenFunc(wg *sync.WaitGroup) {
+  defer wg.Done()
+
+  if err := a.setReadDeadline(); err != nil {
+    util.Error(err)
   }
 
-  a.conn.SetPongHandler(func(string) error {
-    err := a.conn.SetReadDeadline(time.Now().Add(constant.READ_DEADLINE_SEC))
+  a.setPongHandler()
+
+  for {
+    log.Println("Listening")
+    _, msg, err := a.conn.ReadMessage()
     if err != nil {
-      util.Warning(err)
+      a.err_chan <-1
+      util.Error(err)
+      return
     }
-    return nil
-  })
+    log.Println("Listening message received")
 
-  ticker := time.NewTicker(constant.PING_INTERVAL_SEC)
-  defer ticker.Stop()
-  util.Ok("PingPong initiated for account websocket")
+    _ = a.messageHandler(msg)
+  }
+}
 
+func (a *Account) emptyErrChan() {
   for {
     select {
-    case <-ctx.Done():
+    case <-a.err_chan:
+    default:
       return
-    case <-ticker.C:
-      if err := a.conn.WriteControl(
-        websocket.PingMessage, []byte("ping"), 
-        time.Now().Add(5 * time.Second)); err != nil {
-        select {
-        case err_chan <-1:
-          util.Error(err)
-        default:
-        }
-        return
-      }
     }
   }
 }
 
-func (a *Account) listenFunc(connWg *sync.WaitGroup, err_chan chan int8) {
-  defer connWg.Done()
-
-  for {
-    _, message, err := a.conn.ReadMessage()
-    if err != nil {
-      select {
-      case err_chan <-1:
-        util.Error(err)
-      default:
-      }
-      return
-    }
-
-    _ = a.messageHandler(message)
-  }
-}
-
-func (a *Account) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min float64) {
-  defer wg.Done()
+func (a *Account) start(rootWg *sync.WaitGroup, rootCtx context.Context, backoff_sec_min float64) {
+  defer func() {
+    close(a.err_chan)
+    rootWg.Done()
+    log.Println("Account goroutine finished")
+  }()
 
   backoff_sec := backoff_sec_min
   retries := 0
-  leaks := 0
 
   for {
-    if err := a.connect() ; err != nil {
+    if err :=a.connect(); err != nil {
       if retries < 5 {
-        util.Error(err, "Retries", retries)
+        util.Warning(err, "Retries", retries, "Retrying in", backoff_sec)
         util.Backoff(&backoff_sec)
-        retries++
-        continue
       } else {
-        NNP.NoNewPositionsTrue("")
         util.Error(err, "Max retries reached", retries, "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...")
         request.CloseAllPositions(2, 0)
-        log.Panicln("SHUTTING DOWN")
+        log.Panicln("Shut down")
       }
     }
 
     backoff_sec = backoff_sec_min
     retries = 0
 
-    err_chan := make(chan int8)
-
-    a.checkPending()
-
-    var connWg sync.WaitGroup
-
-    connWg.Add(1)
-    go a.listen(&connWg, err_chan)
-
-    context, cancel := context.WithCancel(ctx)
-    connWg.Add(1)
-    go a.pingPong(&connWg, context, err_chan)
+    var wg sync.WaitGroup
+    wg.Add(2)
+    go a.pingSender(&wg)
+    go a.listen(&wg)
 
     select {
-    case <-ctx.Done():
-      cancel()
-      if err := a.conn.Close(); err != nil {
-        util.Error(err)
-        if err := a.conn.UnderlyingConn().Close(); err != nil {
-          util.Error(err)
-          continue
-        }
-      }
-      connWg.Wait()
+    case <-rootCtx.Done():
+      if err := a.conn.Close(); err != nil { log.Println(err.Error()) }
+      log.Println("Waiting for goroutines to finish")
+      wg.Wait()
+      log.Println("Goroutines finished")
       return
-    case <-err_chan:
-      cancel()
-      if err := a.conn.Close(); err != nil {
+    case <-a.err_chan:
+      if err := a.conn.SetReadDeadline(time.Time{}); err != nil {
         util.Error(err)
-        if err := a.conn.UnderlyingConn().Close(); err != nil {
-          leaks++
-          util.Error(err, "Letting go routine leak. Leak count:", leaks)
-          continue
-        }
       }
-      connWg.Wait()
+      log.Println("Error received")
+      if err := a.conn.Close(); err != nil { util.Error(err) }
+      log.Println("Waiting for goroutines to finish")
+      wg.Wait()
+      log.Println("Goroutines finished")
+      log.Println("Emptying error channel")
+      a.emptyErrChan()
+      log.Println("Error channel emptied")
     }
   }
 }

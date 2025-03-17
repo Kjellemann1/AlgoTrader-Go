@@ -11,7 +11,7 @@ import (
   "github.com/stretchr/testify/assert"
   "github.com/Kjellemann1/AlgoTrader-Go/push"
   "github.com/Kjellemann1/AlgoTrader-Go/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/util"
+  // "github.com/Kjellemann1/AlgoTrader-Go/util"
 )
 
 type roundTripFunc func(req *http.Request) (*http.Response, error)
@@ -25,9 +25,6 @@ func init() {
   if HttpClient != nil {
     panic("HttpClient is not nil")
   }
-
-  util.Error = func(err error, details ...any) {}
-  util.Warning = func(err error, details ...any) {}
 
   push.DisablePush()
 }

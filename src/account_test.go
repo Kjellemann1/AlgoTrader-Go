@@ -2,6 +2,7 @@ package main
 
 import (
   "io"
+  "net"
   "time"
   "errors"
   "testing"
@@ -34,7 +35,7 @@ func (c *mockAccountConn) read() string {
   return string(msg)
 }
 
-func mockServerAccount(urlChan chan string, msgChan chan string, rootWg *sync.WaitGroup, signalChan chan int8) {
+func mockServerAccount(urlChan chan string, msgChan chan string, rootWg *sync.WaitGroup) {
   defer rootWg.Done()
   var wg sync.WaitGroup
   wg.Add(3)  // wg = 3 since wg.Done() should be called 3 times due to reconnect
@@ -53,15 +54,17 @@ func mockServerAccount(urlChan chan string, msgChan chan string, rootWg *sync.Wa
       c.write(`{"stream":"authorization","data":{"status":"authorized","action":"authenticate"}}`)
       msgChan <- c.read()
       c.write(`{"stream":"listening","data":{"streams":["trade_updates"]}}`)
-      signalChan <- 1
     } else {
       msgChan <- c.read()
       c.write(`{"stream":"authorization","data":{"status":"authorized","action":"authenticate"}}`)
       msgChan <- c.read()
       c.write(`{"stream":"listening","data":{"streams":["trade_updates"]}}`)
-      signalChan <- 1
     }
     iter++
+    if tcpConn, ok := c.UnderlyingConn().(*net.TCPConn); ok {
+      _ = tcpConn.SetLinger(0)
+      _ = tcpConn.CloseRead()
+    }
     wg.Done()
     select {}  // Block forever to keep connection open
   }))
@@ -75,81 +78,40 @@ func TestAccountReconnect(t *testing.T) {
   assets["stock"] = make(map[string]*Asset)
   db_chan := make(chan *Query, 1)
 
-  t.Run("pingPong error", func(t *testing.T) {
-    urlChan := make(chan string)
-    defer close(urlChan)
-    signalChan := make(chan int8)
-    defer close(signalChan)
-    msgChan := make(chan string, 10)
+  constant.PING_INTERVAL_SEC = 1 * time.Second
+  constant.READ_DEADLINE_SEC = 5 * time.Second
 
-    rootCtx, rootCancel := context.WithCancel(context.Background())
+  urlChan := make(chan string)
+  defer close(urlChan)
+  msgChan := make(chan string, 10)
 
-    var rootWg sync.WaitGroup
-    rootWg.Add(1)
+  rootCtx, rootCancel := context.WithCancel(context.Background())
 
-    go mockServerAccount(urlChan, msgChan, &rootWg, signalChan)
+  var rootWg sync.WaitGroup
+  rootWg.Add(1)
 
-    a := NewAccount(assets, <-urlChan, db_chan)
-    a.pingPong = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
-      defer wg.Done()
-      <-signalChan
-      err_chan <-1
-    }
+  go mockServerAccount(urlChan, msgChan, &rootWg)
 
-    var wg sync.WaitGroup
-    wg.Add(1)
-    assert.Panics(t, func() { a.start(&wg, rootCtx, 0) }, "Expected panic after server close")
-    rootCancel()
+  a := NewAccount(assets, <-urlChan, db_chan)
+  a.pingSender = func(wg *sync.WaitGroup) {
+    defer wg.Done()
+  }
 
-    rootWg.Wait()
-    close(msgChan)
+  var wg sync.WaitGroup
+  wg.Add(1)
+  assert.Panics(t, func() { a.start(&wg, rootCtx, 0) }, "Expected panic after server close")
+  rootCancel()
 
-    subMsgCount := 0
-    for range msgChan {
-      subMsgCount++
-    }
+  rootWg.Wait()
+  close(msgChan)
 
-    assert.Equal(t, 5, subMsgCount)
-  })
+  subMsgCount := 0
+  for range msgChan {
+    subMsgCount++
+  }
 
-  t.Run("listen error", func(t *testing.T) {
-    urlChan := make(chan string)
-    defer close(urlChan)
-    signalChan := make(chan int8)
-    defer close(signalChan)
-    msgChan := make(chan string, 10)
-
-    rootCtx, rootCancel := context.WithCancel(context.Background())
-
-    var rootWg sync.WaitGroup
-    rootWg.Add(1)
-
-    go mockServerAccount(urlChan, msgChan, &rootWg, signalChan)
-
-    a := NewAccount(assets, <-urlChan, db_chan)
-    a.pingPong = func(wg *sync.WaitGroup, ctx context.Context, err_chan chan int8) {
-      defer wg.Done()
-      <-signalChan
-      err_chan <-1
-    }
-
-    var wg sync.WaitGroup
-    wg.Add(1)
-    assert.Panics(t, func() { a.start(&wg, rootCtx, 0) }, "Expected panic after server close")
-    rootCancel()
-
-    rootWg.Wait()
-    close(msgChan)
-
-    subMsgCount := 0
-    for range msgChan {
-      subMsgCount++
-    }
-
-    assert.Equal(t, 5, subMsgCount)
-  })
+  assert.Equal(t, 5, subMsgCount)
 }
-
 
 type roundTripFunc func(req *http.Request) (*http.Response, error)
 
@@ -169,9 +131,6 @@ func init() {
     }),
   }
 
-  util.Error = func(err error, details ...any) {}
-  util.Warning = func(err error, details ...any) {}
-  util.Ok = func(message string) {}
   util.Open = func(message string) {}
   util.Close = func(message string) {}
 
@@ -264,7 +223,6 @@ func TestSendCloseGTC(t *testing.T) {
     a := &Account{}
     assert.Panics(t, func() { a.sendCloseGTC(decimal.NewFromFloat(0.1), "BTC/USD", 0) })
   })
-  
 }
 
 func TestUpdatePositions(t *testing.T) {

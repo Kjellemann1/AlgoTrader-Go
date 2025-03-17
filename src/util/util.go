@@ -51,8 +51,7 @@ func OpenFunc(message string) {
   log.Println("[ OPEN ]\t" + message)
 }
 
-var Ok = OkFunc
-func OkFunc(message string) {
+func Ok(message string) {
   log.Println("[ OK ]\t" + message)
 }
 
@@ -70,8 +69,7 @@ func Info(message string, details ...any) {
   push.Info(logMsg)
 }
 
-var Error = ErrorFunc
-func ErrorFunc(err error, details ...any) {
+func Error(err error, details ...any) {
   if err == nil {
     log.Println(errors.New("Called with nil error"))
     return
@@ -121,8 +119,7 @@ func ErrorPanic(err error, details ...any) {
   push.Error(logMsg)
 }
 
-var Warning = WarningFunc
-func WarningFunc(err error, details ...any) {
+func Warning(err error, details ...any) {
   if err == nil {
     log.Println(errors.New("Called with nil error"))
     return
