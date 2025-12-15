@@ -1,19 +1,20 @@
 package main
 
 import (
-  "sync"
-  "log"
-  "errors"
-  "fmt"
-  "slices"
-  "time"
-  "strings"
-  "context"
-  "github.com/valyala/fastjson"
-  "github.com/gorilla/websocket"
-  "github.com/Kjellemann1/AlgoTrader-Go/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/util"
-  "github.com/Kjellemann1/AlgoTrader-Go/request"
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Kjellemann1/AlgoTrader-Go/constant"
+	"github.com/Kjellemann1/AlgoTrader-Go/request"
+	"github.com/Kjellemann1/AlgoTrader-Go/util"
+	"github.com/gorilla/websocket"
+	"github.com/valyala/fastjson"
 )
 
 type MarketMessage struct {
@@ -132,7 +133,7 @@ func (m *Market) parseMessage(mm MarketMessage) (*fastjson.Value, error) {
     return nil, err
   }
   if arr.Type() != fastjson.TypeArray {
-    err := errors.New("Message is not an array")
+    err := errors.New("message is not an array")
     util.Warning(err, "Message", string(mm.message))
     return nil, err
   }
@@ -157,7 +158,7 @@ func (m *Market) messageHandler(mm MarketMessage) error {
         err := errors.New(string(mm.message))
         return err
       default:
-        util.Warning(errors.New("Unknown message type"), "Message type", message_type, "Message", string(mm.message))
+        util.Warning(errors.New("unknown message type"), "Message type", message_type, "Message", string(mm.message))
     }
   }
   return nil

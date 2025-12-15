@@ -1,21 +1,22 @@
 package main
 
 import (
-  "fmt"
-  "log"
-  "regexp"
-  "errors"
-  "strconv"
-  "sync"
-  "time"
-  "context"
-  "net/http"
-  "github.com/gorilla/websocket"
-  "github.com/valyala/fastjson"
-  "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/request"
-  "github.com/Kjellemann1/AlgoTrader-Go/util"
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"regexp"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/Kjellemann1/AlgoTrader-Go/constant"
+	"github.com/Kjellemann1/AlgoTrader-Go/request"
+	"github.com/Kjellemann1/AlgoTrader-Go/util"
+	"github.com/gorilla/websocket"
+	"github.com/shopspring/decimal"
+	"github.com/valyala/fastjson"
 )
 
 type Account struct {
@@ -57,7 +58,7 @@ func (a *Account) onAuth(message []byte) (string, error) {
     if action == "listen" {
       return action, nil
     } else {
-      return "", errors.New("Failed to authenticate with account websocket")
+      return "", errors.New("failed to authenticate with account websocket")
     }
   }
 }
@@ -282,7 +283,7 @@ func (a *Account) getEvent(data *fastjson.Value) *string {
   return &event_str
 }
 
-func (p *Account) getPositionID(order *fastjson.Value) *string {
+func (*Account) getPositionID(order *fastjson.Value) *string {
   position_id := order.GetStringBytes("client_order_id")  // client_order_id == PositionID
   if position_id == nil {
     util.Warning(errors.New("PositionID not found in order update"), nil)

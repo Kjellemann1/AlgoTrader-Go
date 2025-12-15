@@ -1,10 +1,11 @@
 package main
 
 import (
-  "log"
-  "sync"
-  "context"
-  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+	"context"
+	"log"
+	"sync"
+
+	"github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
 
 var globRwm sync.RWMutex

@@ -1,13 +1,14 @@
 package main
 
 import (
-  "log"
-  "os"
-  "time"
-  "io"
-  "net/http"
-  "github.com/joho/godotenv"
-  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/Kjellemann1/AlgoTrader-Go/constant"
+	"github.com/joho/godotenv"
 )
 
 func init() {
@@ -30,13 +31,6 @@ func init() {
 func init() {
   constant.PUSH_TOKEN = os.Getenv("PushoverToken")
   constant.PUSH_USER = os.Getenv("PushoverUser")
-
-  constant.KEY = os.Getenv("PaperKey")
-  constant.SECRET = os.Getenv("PaperSecret")
-
-  constant.DB_USER = os.Getenv("DBUser")
-  constant.DB_PASSWORD = os.Getenv("DBPassword")
-  constant.DB_NAME = os.Getenv("DBDatabase")
 
   if constant.KEY == "" || constant.SECRET == "" {
     log.Panicln("Missing PaperKey or PaperSecret")
