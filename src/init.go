@@ -32,6 +32,9 @@ func init() {
   constant.PUSH_TOKEN = os.Getenv("PushoverToken")
   constant.PUSH_USER = os.Getenv("PushoverUser")
 
+  constant.KEY = os.Getenv("PaperKey")
+  constant.SECRET = os.Getenv("PaperSecret")
+
   if constant.KEY == "" || constant.SECRET == "" {
     log.Panicln("Missing PaperKey or PaperSecret")
   }
