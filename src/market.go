@@ -309,12 +309,18 @@ func (m *Market) start(wg *sync.WaitGroup, ctx context.Context, backoff_sec_min 
     select {
     case <-ctx.Done():
       cancel()
-      m.conn.Close()
+      err := m.conn.Close()
+      if err != nil {
+        log.Println("[ WARNING ]", err)
+      }
       connWg.Wait()
       return
     case <-err_chan:
       cancel()
-      m.conn.Close()
+      err := m.conn.Close()
+      if err != nil {
+        log.Println("[ WARNING ]", err)
+      }
       connWg.Wait()
     }
   }

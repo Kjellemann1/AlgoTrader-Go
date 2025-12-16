@@ -393,7 +393,7 @@ func (a *Account) getFillTime(order *fastjson.Value) *time.Time {
 
   fill_time_t, err := time.Parse(time.RFC3339, string(fill_time))
   if err != nil {
-    util.Warning(errors.New("Failed to convert fill_time to time.Time"))
+    util.Warning(errors.New("failed to convert fill_time to time.Time"))
   }
 
   return &fill_time_t
@@ -407,7 +407,7 @@ func (a *Account) getFilledAvgPrice(order *fastjson.Value) *float64 {
 
   filled_avg_price_float, err := strconv.ParseFloat(string(filled_avg_price), 64)
   if err != nil {
-    util.Warning(errors.New("Failed to convert filled_avg_price to float"))
+    util.Warning(errors.New("failed to convert filled_avg_price to float"))
   }
 
   return &filled_avg_price_float
@@ -450,13 +450,13 @@ func updateAssetQty(p *Position, a *Asset, u *OrderUpdate) {
   a.Rwm.Lock()
   defer a.Rwm.Unlock()
 
-  var position_change decimal.Decimal = (*u.AssetQty).Sub(a.Qty)
+  var position_change = (*u.AssetQty).Sub(a.Qty)
   p.Qty = p.Qty.Add(position_change)
   a.Qty = *u.AssetQty
 
   if !a.sumPosQtysEqAssetQty() {
     util.Error(
-      errors.New("Sum of position qty not equal to asset qty"),
+      errors.New("sum of position qty not equal to asset qty"),
       "Asset", a.Qty, "Position", p.Qty, "OrderUpdate", u,
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
@@ -528,7 +528,7 @@ func (a *Account) orderUpdateHandler(u *OrderUpdate) {
   }
 
   var asset = a.assets[*u.AssetClass][*u.Symbol]
-  var pos *Position = asset.Positions[*u.StratName]
+  var pos = asset.Positions[*u.StratName]
 
   if pos == nil {
     util.Error(errors.New("Position nil"),

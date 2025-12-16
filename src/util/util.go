@@ -1,16 +1,17 @@
 package util
 
 import (
-  "time"
-  "fmt"
-  "encoding/json"
-  "bytes"
-  "log"
-  "github.com/valyala/fastjson"
-  "runtime"
-  "errors"
-  "path/filepath"
-  "github.com/Kjellemann1/AlgoTrader-Go/push"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"path/filepath"
+	"runtime"
+	"time"
+
+	"github.com/Kjellemann1/AlgoTrader-Go/push"
+	"github.com/valyala/fastjson"
 )
 
 func BackoffWithMax(backoff_sec *float64, backoff_max_sec float64) {
@@ -73,7 +74,7 @@ func Info(message string, details ...any) {
 var Error = ErrorFunc
 func ErrorFunc(err error, details ...any) {
   if err == nil {
-    log.Println(errors.New("Called with nil error"))
+    log.Println(errors.New("called with nil error"))
     return
   }
   _, file, line, ok := runtime.Caller(1)
@@ -98,7 +99,7 @@ func ErrorFunc(err error, details ...any) {
 
 func ErrorPanic(err error, details ...any) {
   if err == nil {
-    log.Println(errors.New("Called with nil error"))
+    log.Println(errors.New("called with nil error"))
     return
   }
   _, file, line, ok := runtime.Caller(1)
@@ -124,7 +125,7 @@ func ErrorPanic(err error, details ...any) {
 var Warning = WarningFunc
 func WarningFunc(err error, details ...any) {
   if err == nil {
-    log.Println(errors.New("Called with nil error"))
+    log.Println(errors.New("called with nil error"))
     return
   }
   _, file, line, ok := runtime.Caller(1)
@@ -148,9 +149,10 @@ func WarningFunc(err error, details ...any) {
 }
 
 // Caller 2
+
 func Error2(err error, details ...any) {
   if err == nil {
-    log.Println(errors.New("Called with nil error"))
+    log.Println(errors.New("called with nil error"))
     return
   }
 
@@ -176,7 +178,7 @@ func Error2(err error, details ...any) {
 
 func Warning2(err error, details ...any) {
   if err == nil {
-    log.Println(errors.New("Called with nil error"))
+    log.Println(errors.New("called with nil error"))
     return
   }
   _, file, line, ok := runtime.Caller(2)

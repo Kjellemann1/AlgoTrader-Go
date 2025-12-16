@@ -1,12 +1,12 @@
 package push
 
 import (
-  "fmt"
-  "log"
-  "bytes"
-  "net/http"
+	"bytes"
+	"fmt"
+	"log"
+	"net/http"
 
-  "github.com/Kjellemann1/AlgoTrader-Go/constant"
+	"github.com/Kjellemann1/AlgoTrader-Go/constant"
 )
 
 var httpClient = &http.Client{}
@@ -39,7 +39,12 @@ func push(message string, title string, prio int) {
       "[ WARNING ]\tError making POST request\n  -> Error: %s\n  -> Response status: %s\n Payload: %s", err, response.Status, payload)
     return
   }
-  defer response.Body.Close()
+  defer func(){ 
+    err := response.Body.Close()
+    if err != nil {
+      log.Println("[WARNING]", err)
+    }
+  }()
   if response.StatusCode != http.StatusOK {
     log.Printf(
       "[ WARNING ]\tFailed to send push notification\n  -> Response status: %s\n  -> Payload: %s\n", response.Status, payload)
@@ -63,6 +68,7 @@ func Error(message string) {
 }
 
 // Everything below this line is for testing purposes
+
 func DisablePush() {
   httpClient = &http.Client{
     Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
