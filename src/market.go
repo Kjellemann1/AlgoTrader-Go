@@ -133,7 +133,7 @@ func (m *Market) parseMessage(mm MarketMessage) (*fastjson.Value, error) {
     return nil, err
   }
   if arr.Type() != fastjson.TypeArray {
-    err := errors.New("message is not an array")
+    err = errors.New("message is not an array")
     util.Warning(err, "Message", string(mm.message))
     return nil, err
   }
