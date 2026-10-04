@@ -43,18 +43,19 @@ func mockServerAccount(urlChan chan string, msgChan chan string, rootWg *sync.Wa
   server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     ws, _ := upgrader.Upgrade(w, r, nil)
     c := mockAccountConn{ws}
-    defer c.Close()
-    if iter == 1 {
+    defer func() { _ = c.Close() }()
+    switch iter {
+    case 1:
       msgChan <- c.read()
       c.write(`{"stream":"authorization,","data":{"status":"unathorized","action":"authenticate"}}`)
-    } else if iter == 2 {
+    case 2:
       msgChan <- c.read()
       c.write(`{"stream":"authorization","data":{"status":"unauthorized","action":"listen"}}`)
       c.write(`{"stream":"authorization","data":{"status":"authorized","action":"authenticate"}}`)
       msgChan <- c.read()
       c.write(`{"stream":"listening","data":{"streams":["trade_updates"]}}`)
       signalChan <- 1
-    } else {
+    default:
       msgChan <- c.read()
       c.write(`{"stream":"authorization","data":{"status":"authorized","action":"authenticate"}}`)
       msgChan <- c.read()
@@ -234,15 +235,16 @@ func TestSendCloseGTC(t *testing.T) {
     Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
       var ret *http.Response
       var err error
-      if iter == 0 {
+      switch iter {
+      case 0:
         ret = &http.Response{ StatusCode: 403, Body: io.NopCloser(strings.NewReader(`{"message":"forbidden."}`)) }
-      } else if iter == 1 || iter == 3 {
+      case 1, 3:
         ret = &http.Response{ StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[{"id":1}]`)) }
-      } else if iter == 2 {
+      case 2:
         ret = &http.Response{ StatusCode: 429, Body: nil }
-      } else if iter == constant.REQUEST_RETRIES + 5 {
+      case constant.REQUEST_RETRIES + 5:
         ret = &http.Response{ StatusCode: 200, Body: nil }
-      } else {
+      default:
         err = errors.New("error")
       }
       iter++

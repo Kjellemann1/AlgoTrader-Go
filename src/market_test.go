@@ -35,7 +35,7 @@ func mockServerMarket (test bool, urlChan chan string, msgChan chan string, root
   server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     ws, _ := upgrader.Upgrade(w, r, nil)
     conn := mockMarketConn{ws}
-    defer conn.Close()
+    defer func() { _ = conn.Close() }()
     if iter == 1 {
       conn.write(`[{"T":"error","msg":"mockError"}]`)
     } else {

@@ -15,8 +15,8 @@ const (
   HIST_DAYS = 1
   HIST_LIMIT = 10000
   HTTP_TIMEOUT_SEC = 5 * time.Second
-  MAX_RECEIVED_TIME_DIFF_MS = 100 * time.Millisecond
-  MAX_TRIGGER_TIME_DIFF_MS = 100 * time.Millisecond
+  MAX_RECEIVED_TIME_DIFF = 100 * time.Millisecond
+  MAX_TRIGGER_TIME_DIFF = 100 * time.Millisecond
   READ_DEADLINE_SEC = 20 * time.Second
   PING_INTERVAL_SEC = 10 * time.Second
   RATE_LIMIT_SLEEP_SEC = 30 * time.Second

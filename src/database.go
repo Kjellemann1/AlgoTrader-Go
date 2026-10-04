@@ -257,7 +257,7 @@ func (db *Database) queryHandler(query *Query, backoff_sec float64, retries int)
       db.saveState()
 
     default:
-      util.Error(errors.New("Invalid query type"), "Query", query)
+      util.Error(errors.New("invalid query type"), "Query", query)
   }
 }
 
@@ -270,7 +270,7 @@ func (db *Database) checkQtysMatch() {
   for _, asset_class := range db.assets {
     for _, asset := range asset_class {
       if asset.Qty.Cmp(qtys[asset.Symbol]) != 0 {
-        util.ErrorPanic(errors.New("Database qty does not match server qty"))
+        util.ErrorPanic(errors.New("database qty does not match server qty"))
       }
     }
   }
@@ -284,7 +284,7 @@ func (db *Database) retrieveState() {
   if err != nil {
     util.ErrorPanic(err)
   }
-  defer response.Close()
+  defer func() { _ = response.Close() }()
 
   for response.Next() {
     var (
@@ -320,8 +320,8 @@ func (db *Database) retrieveState() {
       util.ErrorPanic(err)
     }
 
-    if !( slices.Contains(constant.CRYPTO_SYMBOLS, symbol) || slices.Contains(constant.STOCK_SYMBOLS, symbol) ) {
-      util.ErrorPanic(errors.New("Symbol of retrieved position not in subscription list"))
+    if !slices.Contains(constant.CRYPTO_SYMBOLS, symbol) && !slices.Contains(constant.STOCK_SYMBOLS, symbol) {
+      util.ErrorPanic(errors.New("symbol of retrieved position not in subscription list"))
     }
 
     db.assets[assetClass][symbol].Positions[stratName] = &Position{
@@ -413,7 +413,7 @@ func (db *Database) start(wg *sync.WaitGroup) {
   defer wg.Done()
 
   db.connect()
-  defer db.conn.Close()
+  defer func() { _ = db.conn.Close() }()
 
   db.retrieveState()
 

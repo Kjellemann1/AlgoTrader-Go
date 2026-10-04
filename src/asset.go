@@ -1,14 +1,15 @@
 package main
 
 import (
-  "log"
-  "time"
-  "sync"
-  "errors"
-  "github.com/shopspring/decimal"
-  "github.com/Kjellemann1/AlgoTrader-Go/request"
-  "github.com/Kjellemann1/AlgoTrader-Go/constant"
-  "github.com/Kjellemann1/AlgoTrader-Go/util"
+	"errors"
+	"log"
+	"sync"
+	"time"
+
+	"github.com/Kjellemann1/AlgoTrader-Go/constant"
+	"github.com/Kjellemann1/AlgoTrader-Go/request"
+	"github.com/Kjellemann1/AlgoTrader-Go/util"
+	"github.com/shopspring/decimal"
 )
 
 func prepAssetsMap() map[string]map[string]*Asset {
@@ -225,7 +226,7 @@ func (a *Asset) initiatePositionObject(strat_name string, order_type string, sid
   a.Mutex.Lock()
   defer a.Mutex.Unlock()
   if a.Positions[strat_name] == nil {
-    util.Error(errors.New("Position object is nil for symbol: " + a.Symbol),
+    util.Error(errors.New("position object is nil for symbol: " + a.Symbol),
       "StratName", strat_name, "OrderType", order_type, "Side", side, "OrderID", order_id,
       "CLOSING ALL POSITIONS AND SHUTTING DOWN", "...",
     )
@@ -299,14 +300,14 @@ func (a *Asset) openChecks(strat_name string, trigger_time time.Time) bool {
     return false
   }
 
-  if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF_MS {
+  if a.ReceivedTime.Sub(a.Time) > constant.MAX_RECEIVED_TIME_DIFF {
     log.Printf("[ CANCEL ]\t%s\t%s\tReceived time diff",
       util.AddWhitespace(a.Symbol, 10), strat_name,
     )
     return false
   } 
 
-  if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF_MS {
+  if trigger_time.Sub(a.Time) > constant.MAX_TRIGGER_TIME_DIFF {
     log.Printf("[ CANCEL ]\t%s\t%s\tTrigger time diff",
       util.AddWhitespace(a.Symbol, 10), strat_name,
     )
@@ -350,13 +351,13 @@ func (a *Asset) sendOpen(order_type string, position_id string, symbol string, a
       util.Backoff(&backoff_sec)
     case 429:
       NNP.RateLimitSleep()
-      util.Warning(errors.New("Rate limit exceeded on Open"),
+      util.Warning(errors.New("rate limit exceeded on Open"),
         "Symbol", symbol, "Strat", strat_name,
         "Setting NoNewPositionsFlag to true for (seconds)", constant.RATE_LIMIT_SLEEP_SEC,
         util.AddWhitespace(symbol, 10), strat_name,
       )
     default:
-      util.Error(errors.New("Sending open order failed"),
+      util.Error(errors.New("sending open order failed"),
        "Symbol", symbol, "Status", status, "Retrying in (seconds)", backoff_sec,
       )
       util.Backoff(&backoff_sec)
@@ -431,20 +432,20 @@ func (a *Asset) sendClose(strat_name string, open_side string, order_type string
       )
       util.BackoffWithMax(&backoff_sec, backoff_max)
     case 422:
-      util.Error(errors.New("Close order unprocessable"),
+      util.Error(errors.New("close order unprocessable"),
         "Symbol", symbol, "Strat", strat_name, "Body", body, "Retrying in (seconds)", backoff_sec,
       )
       return
     case 429:
       NNP.RateLimitSleep()
-      util.Warning(errors.New("Rate limit exceeded on Close"),
+      util.Warning(errors.New("rate limit exceeded on Close"),
         "Symbol", symbol, "Strat", strat_name, "Retrying in (seconds)", backoff_sec,
         "Setting NoNewPositionsFlag to true for (seconds)", constant.RATE_LIMIT_SLEEP_SEC,
         util.AddWhitespace(symbol, 10), strat_name, backoff_sec,
       )
       util.BackoffWithMax(&backoff_sec, backoff_max)
     default:
-      util.Error(errors.New("Sending close order failed"),
+      util.Error(errors.New("sending close order failed"),
         "Symbol", symbol, "Status", status, "Retrying in (seconds)", backoff_sec,
       )
       util.BackoffWithMax(&backoff_sec, backoff_max)

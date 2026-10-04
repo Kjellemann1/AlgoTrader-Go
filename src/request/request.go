@@ -36,7 +36,7 @@ func GetReq(url string) ([]byte, error) {
   if err != nil {
     return nil, err
   }
-  defer resp.Body.Close()
+  defer func() { _ = resp.Body.Close() }()
   body, err := io.ReadAll(resp.Body)
   if err != nil {
     fmt.Println("Error reading body. ", err)
@@ -64,7 +64,7 @@ func parseBody(body []byte) ([]*fastjson.Value, error) {
   }
   arr := parsed.GetArray()
   if arr == nil {
-    return nil, errors.New("Parsed response is not an array")
+    return nil, errors.New("parsed response is not an array")
   }
   return arr, nil
 }
@@ -81,7 +81,7 @@ func SendOrder(payload string) (string, int, error) {
   if err != nil {
     return "", 0, err
   }
-  defer response.Body.Close()
+  defer func() { _ = response.Body.Close() }()
   body_bytes, err := io.ReadAll(response.Body)
   if err != nil {
     util.Error(err)
@@ -92,12 +92,13 @@ func SendOrder(payload string) (string, int, error) {
 
 func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
   qty, _ := decimal.NewFromString("0")
-  if asset_class == "stock" {
+  switch asset_class {
+  case "stock":
     qty = decimal.NewFromFloat(constant.NOTIONAL_USD / last_price).RoundDown(0)
     if qty.Cmp(decimal.NewFromInt(1)) == -1 {
       qty = decimal.NewFromInt(0)
     }
-  } else if asset_class == "crypto" {
+  case "crypto":
     qty = decimal.NewFromFloat(constant.NOTIONAL_USD / last_price).RoundDown(9)
   }
   return qty
@@ -105,7 +106,7 @@ func CalculateOpenQty(asset_class string, last_price float64) decimal.Decimal {
 
 func GetPositions(backoff_sec float64, retries int) (arr []*fastjson.Value, err error) {
   if retries >= constant.REQUEST_RETRIES {
-    return nil, errors.New("Max retries reached. Failed to get positions.")
+    return nil, errors.New("max retries reached: failed to get positions")
   }
   body, err := GetReq(constant.ENDPOINT + "/positions")
   if err != nil {
@@ -125,7 +126,7 @@ func GetPositions(backoff_sec float64, retries int) (arr []*fastjson.Value, err 
 func OpenLongIOC(symbol string, asset_class string, position_id string, last_price float64) (string, int, error) {
   qty := CalculateOpenQty(asset_class, last_price)
   if qty.IsZero() {
-    return "", 0, errors.New("Calculated open qty is zero")
+    return "", 0, errors.New("calculated open qty is zero")
   }
 
   payload := `{` +
@@ -172,7 +173,7 @@ func CloseGTC(side string, symbol string, order_id string, qty decimal.Decimal) 
   resp, status, err := SendOrder(payload)
   if err != nil || status != 200 {
     if err == nil {
-      err = errors.New("Bad status code")
+      err = errors.New("bad status code")
     }
     return resp, status, err
   }
@@ -183,7 +184,7 @@ func CloseGTC(side string, symbol string, order_id string, qty decimal.Decimal) 
 func CloseAllPositions(backoff_sec float64, retries int) {
   if retries >= constant.REQUEST_RETRIES {
     log.Printf("[ FAIL ]\tFailed to close all positions after %d retries\n", retries)
-    util.Error(errors.New("Failed to close all positions."), "Max retries reached", retries)
+    util.Error(errors.New("failed to close all positions"), "Max retries reached", retries)
     return
   }
 
@@ -240,7 +241,7 @@ func urlGetClosedOrders(symbols map[string]map[string]int) (url string) {
 
 func GetClosedOrders(symbols map[string]map[string]int, backoff_sec float64, retries int) (parsed []*fastjson.Value, err error) {
   if retries >= 4 {
-    return nil, errors.New("Max retries reached. Failed to get closed orders.")
+    return nil, errors.New("max retries reached: failed to get closed orders")
   }
 
   url := urlGetClosedOrders(symbols)
